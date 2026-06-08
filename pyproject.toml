@@ -1,0 +1,7 @@
+[project]
+name = "media-janitor"
+version = "0.1.0"
+description = "Manage homelab media files"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []

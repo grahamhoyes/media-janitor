@@ -1,0 +1,27 @@
+{% extends "media_janitor/base.html" %}
+
+{% block page_title %}Sign in{% endblock %}
+
+{% block content %}
+<div class="card bg-base-100 shadow-md max-w-sm mx-auto mt-10">
+  <div class="card-body gap-4">
+    <h1 class="card-title">Sign in</h1>
+    {% if form.errors %}
+      <div class="alert alert-error text-sm">Invalid username or password.</div>
+    {% endif %}
+    <form method="post" class="flex flex-col gap-3">
+      {% csrf_token %}
+      <label class="form-control">
+        <span class="label-text text-sm">Username</span>
+        <input type="text" name="username" autofocus required
+               class="input input-bordered w-full" value="{{ form.username.value|default:'' }}">
+      </label>
+      <label class="form-control">
+        <span class="label-text text-sm">Password</span>
+        <input type="password" name="password" required class="input input-bordered w-full">
+      </label>
+      <button type="submit" class="btn btn-primary mt-2">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

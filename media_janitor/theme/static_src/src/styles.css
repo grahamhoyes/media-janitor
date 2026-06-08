@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Scan Django templates, JS, SVGs, and Python for Tailwind classes (django-tailwind). */
+@source "../../../**/*.{html,py,js,svg}";
+
+@plugin "daisyui" {
+  themes: business --default, corporate;
+}
+
+/* == Daisy UI theme overrides ============================================= */
+
+/* Match Corporate's selector radius (badges/toggles/checkboxes/tabs) */
+@plugin "daisyui/theme" {
+  name: "business";
+  --radius-selector: 0.25rem;
+}
+
+/* == Alpine and HTMX Extras =============================================== */
+
+/* Alpine cloak directive */
+[x-cloak] {
+  display: none !important;
+}
+
+/* HTMX Indicator*/
+.htmx-indicator {
+  display: none
+}
+
+.htmx-request .htmx-indicator {
+  display: block;
+}
+
+.htmx-request.htmx-indicator {
+  display: block;
+}

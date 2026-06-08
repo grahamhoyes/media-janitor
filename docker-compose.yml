@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: media_janitor
+      POSTGRES_PASSWORD: media_janitor
+      POSTGRES_DB: media_janitor
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: pg_isready -U media_janitor
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

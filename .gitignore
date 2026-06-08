@@ -112,5 +112,13 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Media Janitor
+# Tailwind build output (rebuilt via `manage.py tailwind build`)
+media_janitor/theme/static/css/dist/
+# collectstatic target
+media_janitor/staticfiles/
+# node deps for the theme app
+node_modules/
+
 # PyPI configuration file
 .pypirc

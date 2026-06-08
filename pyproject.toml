@@ -3,5 +3,35 @@ name = "media-janitor"
 version = "0.1.0"
 description = "Manage homelab media files"
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = []
+requires-python = ">=3.14"
+dependencies = [
+    "django>=6.0",
+    "django-environ>=0.13.0",
+    "django-htmx>=1.27.0",
+    "django-tailwind>=4.4.2",
+    "django-tasks-db>=0.12.0",
+    "gunicorn>=26.0.0",
+    "httpx>=0.28.1",
+    "psycopg[binary]>=3.3.4",
+]
+
+[dependency-groups]
+dev = [
+    "django-browser-reload>=1.21.0",
+    "honcho>=2.0.0",
+    "pytest>=9.0.3",
+    "pytest-django>=4.12.0",
+    "ruff>=0.15.16",
+]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["**/migrations/*", "media_janitor/theme/static_src/**"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DJ"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+pythonpath = ["media_janitor"]
+python_files = ["test_*.py", "*_test.py", "tests.py"]

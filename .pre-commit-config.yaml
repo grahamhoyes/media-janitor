@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      # Linting
+      - id: ruff-check
+        args: [--fix]
+      # Formatting
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/grahamhoyes/pre-commit-forbid-ai-writing
+    rev: "0.1"
+    hooks:
+      - id: forbid-special-characters
+
+  - repo: local
+    hooks:
+      # Type checking. Run via the project's uv environment so the
+      # django-stubs mypy plugin can import Django and the settings module.
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
+        require_serial: true

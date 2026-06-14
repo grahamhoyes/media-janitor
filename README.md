@@ -20,7 +20,7 @@ uv sync
 
 ### Environment Variables
 
-Sample environment variables are provided in [.env.sample](.env.example). Copy them to `.env`: 
+Sample environment variables are provided in [.env.sample](.env.example). Copy them to `.env`:
 
 ```bash
 cp .env.sample .env

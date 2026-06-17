@@ -40,6 +40,7 @@ select = ["E", "F", "I", "UP", "B", "DJ"]
 plugins = ["mypy_django_plugin.main"]
 mypy_path = "media_janitor"
 ignore_missing_imports = true
+check_untyped_defs = true
 
 [tool.django-stubs]
 django_settings_module = "config.settings"

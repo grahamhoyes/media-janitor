@@ -64,8 +64,8 @@ def test_relations_resolve():
     assert scan.blobs.count() == 1
     assert blob.links.count() == 1
     assert blob.blob_torrents.count() == 1
-    assert blob.blob_torrents.first().torrent == torrent
-    assert torrent.blob_torrents.first().blob == blob
+    assert blob.blob_torrents.get().torrent == torrent
+    assert torrent.blob_torrents.get().blob == blob
 
 
 @pytest.mark.django_db

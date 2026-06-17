@@ -80,11 +80,11 @@ class Scan(models.Model):
         help_text="Quarantine window, copied from Config at scan start"
     )
 
-    qbittorrent_webapi_version = models.CharField(
+    qbittorrent_version = models.CharField(
         max_length=32,
         blank=True,
         default="",
-        help_text="qBittorrent Web API version observed during the scan",
+        help_text="qBittorrent application version observed during the scan",
     )
 
     summary_totals = models.JSONField[dict, dict](
@@ -99,12 +99,20 @@ class Scan(models.Model):
 
 
 class Kind(models.TextChoices):
+    """File / blob type"""
+
     MEDIA = "media"
     SIDECAR = "sidecar"
     OTHER = "other"
 
 
 class Tree(models.TextChoices):
+    """
+    A folder type
+
+    Library and Torrents are the main recognized trees, other is for anything else
+    """
+
     LIBRARY = "library"
     TORRENTS = "torrents"
     LOOSE = "loose"

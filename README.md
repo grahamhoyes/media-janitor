@@ -3,16 +3,67 @@
 Human-in-the-loop tool for reclaiming wasted space on a homelab *arr stack.
 
 There are two main components:
-- A scan worker periodically (or as-triggered) scans a filesystem and associated *arr apps to look for files that aren't hard-linked in multiple places and aren't being seeded.
+
+- A scan worker periodically (or as-triggered) scans a filesystem and associated *arr apps to look for files that aren't
+  hard-linked in multiple places and aren't being seeded.
 - A web application displays the latest scan so the user can explore storage and safely delete orphaned files.
 
-## Getting Started
+## Configuration
+
+Media Janitor reads its settings from environment variables. Copy [.env.example](.env.example) to `.env` and adjust
+them for your setup.
+
+### Mount points
+
+Media Janitor and every app it talks to read the same media share, but each may mount it at a different path in the
+container and may only mount a sub-path of the share. So that paths line up no matter which app reported them, Media
+Janitor stores everything relative to the share root. For each
+app you set a **data root**: the path in that app's container that maps to the share root. Media Janitor strips it to
+recover the share-relative path.
+
+For example, a share on the NAS at `/volume1/media`:
+
+```
+/volume1/media
+├── torrents
+│   ├── movies
+│   └── tv
+└── media
+    ├── movies
+    └── tv
+```
+
+mounted into three apps:
+
+| App             | Mounts                                        | Reports paths like         | Data root     |
+|-----------------|-----------------------------------------------|----------------------------|---------------|
+| qBittorrent     | `torrents/` subpath only, at `/data/torrents` | `/data/torrents/movies`    | `/data`       |
+| Sonarr / Radarr | whole share, at `/data`                       | `/data/media/movies`       | `/data`       |
+| Jellyfin        | whole share, at `/data/media`                 | `/data/media/media/movies` | `/data/media` |
+
+The data root is the path that maps to the share root, which is not always the mount path: in this example qBittorrent
+mounts only the share's `torrents/` subdirectory, but its paths are still rooted at `/data`, so stripping `/data` from
+`/data/torrents/movies` correctly yields the share-relative `torrents/movies`.
+
+### Settings
+
+Only qBittorrent is supported today; other clients (Sonarr/Radarr, Jellyfin) will be added here later.
+
+| Setting          | Description                                                       |
+|------------------|-------------------------------------------------------------------|
+| `QBIT_HOST`      | qBittorrent WebUI URL                                             |
+| `QBIT_API_KEY`   | qBittorrent 5.2 WebUI API key (Settings > WebUI > Authentication) |
+| `QBIT_DATA_ROOT` | qBittorrent data root (see [Mount points](#mount-points))         |
+
+## Development
 
 ### Python Environment
 
-This project uses Python 3.14 and [uv](https://docs.astral.sh/uv/) for environment management. Install uv by following the official [installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
+This project uses Python 3.14 and [uv](https://docs.astral.sh/uv/) for environment management. Install uv by following
+the official [installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
 
-uv will automatically create a virtual environment and install all dependencies (including the required Python version) from the lockfile:
+uv will automatically create a virtual environment and install all dependencies (including the required Python version)
+from the lockfile:
 
 ```bash
 uv sync
@@ -30,7 +81,9 @@ Make sure to change placeholder values (especially the secret key) before runnin
 
 ### Database
 
-An external Postgres database is required so that the sync worker and web application can share a data store. Any version of Postgres supported by Django is fine. A Postgres 18 database for local development is provided in [docker-compose.yml](docker-compose.yml):
+An external Postgres database is required so that the sync worker and web application can share a data store. Any
+version of Postgres supported by Django is fine. A Postgres 18 database for local development is provided
+in [docker-compose.yml](docker-compose.yml):
 
 ```bash
 docker compose up -d
@@ -49,7 +102,8 @@ uv run manage.py createsuperuser
 
 ### Running the Development Server
 
-From within the `media_janitor` directory, the `tailwind dev` command will run the Django development server and enable watch mode for Tailwind:
+From within the `media_janitor` directory, the `tailwind dev` command will run the Django development server and enable
+watch mode for Tailwind:
 
 ```bash
 uv run manage.py tailwind dev
@@ -86,17 +140,21 @@ uv run pytest
 ## Stack
 
 Backend:
+
 - Python 3.14
 - Django 6.0
 - Postgres (an external database is required since the scan runs in another process)
-- Background work: Django 6.0 Tasks + [`django-tasks-db`](https://github.com/RealOrangeOne/django-tasks-db) (`manage.py db_worker`)
+- Background work: Django 6.0 Tasks + [`django-tasks-db`](https://github.com/RealOrangeOne/django-tasks-db)
+  (`manage.py db_worker`)
 
 Frontend:
+
 - Tailwind v4 + DaisyUI via `django-tailwind`
 - HTMX
 - Alpine.js
 
 Tooling:
+
 - `uv`
 - `ruff`
 - `pytest`

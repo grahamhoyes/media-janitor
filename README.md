@@ -49,11 +49,12 @@ mounts only the share's `torrents/` subdirectory, but its paths are still rooted
 
 Only qBittorrent is supported today; other clients (Sonarr/Radarr, Jellyfin) will be added here later.
 
-| Setting          | Description                                                       |
-|------------------|-------------------------------------------------------------------|
-| `QBIT_HOST`      | qBittorrent WebUI URL                                             |
-| `QBIT_API_KEY`   | qBittorrent 5.2 WebUI API key (Settings > WebUI > Authentication) |
-| `QBIT_DATA_ROOT` | qBittorrent data root (see [Mount points](#mount-points))         |
+| Setting          | Description                                                                       |
+|------------------|-----------------------------------------------------------------------------------|
+| `SHARE_ROOT`     | Path where Media Janitor sees the share root. The scan walks everything under it. |
+| `QBIT_HOST`      | qBittorrent WebUI URL                                                             |
+| `QBIT_API_KEY`   | qBittorrent 5.2 WebUI API key (Settings > WebUI > Authentication)                 |
+| `QBIT_DATA_ROOT` | qBittorrent data root (see [Mount points](#mount-points))                         |
 
 ## Development
 

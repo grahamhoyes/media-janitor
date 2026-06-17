@@ -22,6 +22,10 @@ SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
+# Filesystem. SHARE_ROOT is where Media Janitor sees the share root. The scan walks
+# everything under it.
+SHARE_ROOT = env("SHARE_ROOT", default="")
+
 # qBittorrent. The application will start, but the scan will fail if values aren't set.
 QBIT_HOST = env("QBIT_HOST", default="")
 QBIT_API_KEY = env("QBIT_API_KEY", default="")

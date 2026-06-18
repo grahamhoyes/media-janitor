@@ -225,7 +225,12 @@ class Torrent(models.Model):
     seeding_met = models.BooleanField(default=False)
     seeding_end = models.DateTimeField(null=True, blank=True)
     partial_torrent = models.BooleanField(default=False)
-    reclaim_if_removed_bytes = models.BigIntegerField(default=0)
+    bytes_reclaimable_if_removed = models.BigIntegerField(
+        default=0,
+        help_text="Bytes freed if this whole torrent is removed: the size of its reclaimable "
+        "blobs whose only links belong to this torrent. Cross-seeded blobs and blobs with "
+        "links outside the scan free nothing and are excluded.",
+    )
 
     def __str__(self) -> str:
         return f"Torrent {self.hash}"

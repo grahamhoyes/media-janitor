@@ -200,7 +200,8 @@ def test_torrent_data_persists_raw_state_and_seeding():
     assert td.hash == "abc"
     assert td.state == "stalledUP"
     assert td.seeding_met is True
-    assert td.reclaim_if_removed_bytes == 0
+    # Single reclaimable, last-link blob: removing the torrent frees its bytes.
+    assert td.bytes_reclaimable_if_removed == 100
     # blob_torrent carries the file index and object references
     assert len(result.blob_torrents) == 1
     bt = result.blob_torrents[0]
@@ -525,6 +526,77 @@ def test_sidecar_prefers_seeding_hold_over_reclaimable_when_mixed():
     assert hold.status is Blob.Status.SEEDING_HOLD
     assert sidecar.status is Blob.Status.SEEDING_HOLD
     assert sidecar.orphan_reason == ""
+
+
+# --- bytes_reclaimable_if_removed ------------------------------------------------
+
+
+def test_reclaim_if_removed_all_reclaimable_last_link():
+    # Every owned blob is reclaimable and last-link -> total is the sum of sizes.
+    f1 = TorrentFile(index=0, path="torrents/pack/a.mkv", size=100)
+    f2 = TorrentFile(index=1, path="torrents/pack/b.mkv", size=200)
+    records = [
+        rec("torrents/pack/a.mkv", st_ino=300, size=100, nlink=1),
+        rec("torrents/pack/b.mkv", st_ino=301, size=200, nlink=1),
+    ]
+    t = torrent([f1, f2], hash="pack", ratio=5.0)
+    result = run(records, [t])
+    a = blob_by_ino(result, 300)
+    b = blob_by_ino(result, 301)
+    assert a.status is Blob.Status.RECLAIMABLE
+    assert b.status is Blob.Status.RECLAIMABLE
+    assert result.torrents[0].bytes_reclaimable_if_removed == 300
+
+
+def test_reclaim_if_removed_season_pack_only_reclaimable_counted():
+    # A season pack: ep1 hardlinked into the library (in_library, frees nothing),
+    # ep2 only in torrents and seeding-met (reclaimable). Removing the torrent
+    # frees only ep2's bytes.
+    f_keep = TorrentFile(index=0, path="torrents/pack/ep1.mkv", size=100)
+    f_recl = TorrentFile(index=1, path="torrents/pack/ep2.mkv", size=400)
+    records = [
+        rec("torrents/pack/ep1.mkv", st_ino=310, size=100, nlink=2),
+        rec("media/tv/show/ep1.mkv", st_ino=310, size=100, nlink=2),
+        rec("torrents/pack/ep2.mkv", st_ino=311, size=400, nlink=1),
+    ]
+    t = torrent([f_keep, f_recl], hash="pack", ratio=5.0)
+    result = run(records, [t])
+    ep1 = blob_by_ino(result, 310)
+    ep2 = blob_by_ino(result, 311)
+    assert ep1.status is Blob.Status.IN_LIBRARY
+    assert ep2.status is Blob.Status.RECLAIMABLE
+    assert result.torrents[0].bytes_reclaimable_if_removed == 400
+
+
+def test_reclaim_if_removed_excludes_cross_seed():
+    # Two torrents own the same reclaimable, hardlinked blob (cross-seed).
+    # Removing either alone does not free the bytes, so neither counts it.
+    f1 = TorrentFile(index=0, path="torrents/clientA/movie.mkv", size=100)
+    f2 = TorrentFile(index=0, path="torrents/clientB/movie.mkv", size=100)
+    records = [
+        rec("torrents/clientA/movie.mkv", st_ino=320, size=100, nlink=2),
+        rec("torrents/clientB/movie.mkv", st_ino=320, size=100, nlink=2),
+    ]
+    t1 = torrent([f1], hash="A", ratio=5.0)
+    t2 = torrent([f2], hash="B", ratio=5.0)
+    result = run(records, [t1, t2])
+    blob = blob_by_ino(result, 320)
+    assert blob.status is Blob.Status.RECLAIMABLE
+    assert blob.cross_seed is True
+    assert all(td.bytes_reclaimable_if_removed == 0 for td in result.torrents)
+
+
+def test_reclaim_if_removed_excludes_links_outside_scope():
+    # The torrent's blob is reclaimable but has a link outside the scanned tree
+    # (nlink > links_found), so removing what we see frees nothing.
+    f = TorrentFile(index=0, path="torrents/out.mkv", size=500)
+    records = [rec("torrents/out.mkv", st_ino=330, size=500, nlink=3)]
+    t = torrent([f], hash="out", ratio=5.0)
+    result = run(records, [t])
+    blob = blob_by_ino(result, 330)
+    assert blob.status is Blob.Status.RECLAIMABLE
+    assert blob.links_outside_scope is True
+    assert result.torrents[0].bytes_reclaimable_if_removed == 0
 
 
 # --- summary_totals ----------------------------------------------------------

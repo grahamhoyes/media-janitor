@@ -57,8 +57,9 @@ class TorrentDraft:
     seeding_met: bool
     seeding_end: datetime | None
     partial_torrent: bool = False
-    # TODO: Not yet computed; left at the model default of 0.
-    reclaim_if_removed_bytes: int = 0
+    # Bytes freed by removing this torrent: its reclaimable, last-link blobs.
+    # Computed during the build after blob flags are set.
+    bytes_reclaimable_if_removed: int = 0
     owned_blobs: list[BlobDraft] = field(default_factory=list)
     "Blobs owned by this torrent. Used internally only, not persisted."
 
@@ -304,6 +305,28 @@ def build_scan_model(
         blob.multi_link = flags.multi_link
         blob.seedable_idle = flags.seedable_idle
         blob.links_outside_scope = flags.links_outside_scope
+
+    # bytes_reclaimable_if_removed: bytes freed if this whole torrent is removed.
+    # Sum the size of owned blobs that are reclaimable and whose only links belong
+    # to this torrent (not cross-seeded, no links outside the scan). Example: a
+    # 10-file season pack with 6 episodes still hardlinked into the library and 4
+    # orphaned reclaims only the 4. Dedupe owned blobs by identity so a blob listed
+    # under multiple file entries is not double-counted. Runs after flags, since it
+    # reads cross_seed and links_outside_scope.
+    for td in torrent_data:
+        seen: set[int] = set()
+        total = 0
+        for blob in td.owned_blobs:
+            if id(blob) in seen:
+                continue
+            seen.add(id(blob))
+            if (
+                blob.status is Blob.Status.RECLAIMABLE
+                and not blob.links_outside_scope
+                and not blob.cross_seed
+            ):
+                total += blob.size
+        td.bytes_reclaimable_if_removed = total
 
     summary_totals = _summary_totals(blobs)
 

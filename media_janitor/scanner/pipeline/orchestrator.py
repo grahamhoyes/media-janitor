@@ -183,7 +183,7 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
                     seeding_met=t.seeding_met,
                     seeding_end=t.seeding_end,
                     partial_torrent=t.partial_torrent,
-                    reclaim_if_removed_bytes=t.reclaim_if_removed_bytes,
+                    bytes_reclaimable_if_removed=t.bytes_reclaimable_if_removed,
                 )
                 for t in result.torrents
             ]

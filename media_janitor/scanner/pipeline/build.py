@@ -233,21 +233,20 @@ def build_scan_model(
             blob_for_path.owner_torrents.append(td)
             td.owned_blobs.append(blob_for_path)
 
-    # Rolled-up blob seeding
+    # Roll up per-blob seeding, then classify each blob's status from it. Both are
+    # per-blob with no cross-blob dependency, so they share one pass. Sidecars are
+    # bound in a later pass and may inherit a media blob's status, so they are
+    # classified provisionally here.
     for blob in blobs:
-        if not blob.owner_torrents:
-            # Untracked: seeding_met None, datetimes None (already defaulted)
-            continue
-        # A blob has met seeding requirements if all associated torrents have met their reqs
-        blob.seeding_met = all(t.seeding_met for t in blob.owner_torrents)
-        starts = [t.completed_on for t in blob.owner_torrents if t.completed_on is not None]
-        if starts:
-            blob.latest_seeding_start = max(starts)
-            blob.seeding_end = blob.latest_seeding_start + timedelta(days=reqs.min_days)
+        if blob.owner_torrents:
+            # A blob has met seeding requirements if all owning torrents have met theirs
+            blob.seeding_met = all(t.seeding_met for t in blob.owner_torrents)
+            starts = [t.completed_on for t in blob.owner_torrents if t.completed_on is not None]
+            if starts:
+                blob.latest_seeding_start = max(starts)
+                blob.seeding_end = blob.latest_seeding_start + timedelta(days=reqs.min_days)
+        # else the torrent is untracked - seeding_met None, datetimes None (already defaulted)
 
-    # Derive each blob's status. Sidecars are bound in a later pass and may inherit
-    # a media blob's status, so they are classified provisionally here.
-    for blob in blobs:
         in_quarantine = any(now - link.mtime < quarantine_window for link in blob.links)
         blob.status = classify_status(
             link_trees=tuple(link.tree for link in blob.links),

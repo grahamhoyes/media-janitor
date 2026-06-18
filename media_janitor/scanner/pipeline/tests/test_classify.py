@@ -173,6 +173,30 @@ def test_multi_link(kwargs, expected):
             ),
             False,
         ),
+        # false: only owning torrent is in an error/other state, not actionable
+        (
+            flags_kwargs(
+                link_trees=(Tree.LIBRARY, Tree.TORRENTS),
+                owner_states=(TorrentState.OTHER,),
+            ),
+            False,
+        ),
+        # false: cross-seed where one owner is seeding (actively seeded)
+        (
+            flags_kwargs(
+                link_trees=(Tree.LIBRARY, Tree.TORRENTS),
+                owner_states=(TorrentState.STOPPED, TorrentState.SEEDING),
+            ),
+            False,
+        ),
+        # true: cross-seed where one owner is stopped, the other in an other state
+        (
+            flags_kwargs(
+                link_trees=(Tree.LIBRARY, Tree.TORRENTS),
+                owner_states=(TorrentState.STOPPED, TorrentState.OTHER),
+            ),
+            True,
+        ),
         # false: no torrents link
         (flags_kwargs(link_trees=(Tree.LIBRARY,)), False),
         # false: no library link

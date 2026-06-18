@@ -15,9 +15,11 @@ class BlobFlags:
     "Multiple hard links in the same tree"
     seedable_idle: bool
     """
-    In the library and torrent tree, but isn't seeding.
+    In the library and torrent tree, but isn't seeding, where re-seeding is an
+    easy fix.
 
-    May have no torrent, or torrent may be stopped.
+    Covers the case of no owning torrent, or an owning torrent that is stopped.
+    Not set when the only owning torrents are in an error or other state.
     """
     links_outside_scope: bool
     "Link count could not be accounted for by only files in the scan"
@@ -79,6 +81,7 @@ def compute_flags(
     has_torrents_link = Tree.TORRENTS in link_trees
     has_active_torrent = any(s is TorrentState.IN_FLIGHT for s in torrent_states)
     has_seeding_torrent = any(s is TorrentState.SEEDING for s in torrent_states)
+    has_stopped_torrent = any(s is TorrentState.STOPPED for s in torrent_states)
 
     tree_counts = Counter(link_trees)
 
@@ -90,6 +93,7 @@ def compute_flags(
             and has_torrents_link
             and not has_seeding_torrent
             and not has_active_torrent
+            and (not torrent_states or has_stopped_torrent)
         ),
         links_outside_scope=links_found < nlink,
     )

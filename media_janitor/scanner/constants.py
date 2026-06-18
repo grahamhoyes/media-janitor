@@ -40,5 +40,6 @@ SIDECAR_EXTENSIONS: frozenset[str] = frozenset(
         ".ssa",
         ".vtt",
         ".nfo",
+        ".srr",
     }
 )

@@ -130,6 +130,7 @@ class Blob(models.Model):
         IN_LIBRARY = "in_library"
         IN_PROGRESS = "in_progress"
 
+    # TODO: Convert all of these to on_delete=models.DB_CASCADE once Django 6.1 is out
     scan = models.ForeignKey(Scan, on_delete=models.CASCADE, related_name="blobs")
     st_dev = models.BigIntegerField()
     st_ino = models.BigIntegerField()

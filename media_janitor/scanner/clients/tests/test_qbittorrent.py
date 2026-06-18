@@ -113,6 +113,8 @@ async def test_gather_happy_path():
         ("metaDL", TorrentState.IN_FLIGHT),
         ("stalledDL", TorrentState.IN_FLIGHT),
         ("moving", TorrentState.IN_FLIGHT),
+        # checkingUP is a recheck in progress, not active seeding
+        ("checkingUP", TorrentState.IN_FLIGHT),
         ("uploading", TorrentState.SEEDING),
         ("stalledUP", TorrentState.SEEDING),
         ("forcedUP", TorrentState.SEEDING),
@@ -238,6 +240,60 @@ async def test_self_created_client_closed_on_aexit():
         grabbed = client._client
 
     assert grabbed.is_closed
+
+
+async def test_torrent_outside_data_root_skipped():
+    # A torrent stored outside data_root is out of scope: it is skipped (and not
+    # files-fetched), while in-scope torrents still appear. The scan does not raise.
+    outside_torrent = {
+        "hash": "cccc",
+        "state": "uploading",
+        "ratio": 1.0,
+        "completion_on": 1_700_000_000,
+        "seeding_time": 3600,
+        "content_path": "/other/torrents/x.mkv",
+        "save_path": "/other/torrents",
+    }
+    files_requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/v2/app/version":
+            return httpx.Response(200, text="v5.2.0")
+        if path == "/api/v2/torrents/info":
+            return httpx.Response(200, json=[SINGLE_FILE_TORRENT, outside_torrent])
+        if path == "/api/v2/torrents/files":
+            torrent_hash = request.url.params["hash"]
+            files_requested.append(torrent_hash)
+            return httpx.Response(200, json=FILES_BY_HASH[torrent_hash])
+        raise AssertionError(f"unexpected path {path}")
+
+    client = _make_client(handler)
+    snapshot = await client.gather()
+
+    hashes = {t.hash for t in snapshot.torrents}
+    assert hashes == {"aaaa"}
+    # The out-of-scope torrent is skipped before any files request is made
+    assert files_requested == ["aaaa"]
+
+
+async def test_missing_expected_field_raises():
+    # A missing expected field signals a broken API contract and must fail the scan
+    malformed_torrent = {k: v for k, v in SINGLE_FILE_TORRENT.items() if k != "completion_on"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/v2/app/version":
+            return httpx.Response(200, text="v5.2.0")
+        if path == "/api/v2/torrents/info":
+            return httpx.Response(200, json=[malformed_torrent])
+        if path == "/api/v2/torrents/files":
+            return httpx.Response(200, json=FILES_BY_HASH["aaaa"])
+        raise AssertionError(f"unexpected path {path}")
+
+    client = _make_client(handler)
+    with pytest.raises(KeyError):
+        await client.gather()
 
 
 async def test_files_request_uses_raw_save_path():

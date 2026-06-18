@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ def evaluate_seeding(
     :param now: Optional, current timestamp (for test injection)
     """
     if now is None:
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
 
     started = completed_on
     end = started + timedelta(days=reqs.min_days) if started is not None else None

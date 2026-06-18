@@ -8,6 +8,7 @@ to normalized objects from base.py for the rest of the pipeline.
 """
 
 import asyncio
+import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 
@@ -21,6 +22,8 @@ from .base import (
     TorrentSnapshot,
     TorrentState,
 )
+
+logger = logging.getLogger(__name__)
 
 # qBittorrent 5.2 torrent states. See:
 # https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)#get-torrent-list
@@ -37,6 +40,7 @@ _IN_FLIGHT_STATES: frozenset[str] = frozenset(
         "queuedDL",
         "allocating",
         "checkingResumeData",
+        "checkingUP",
         "moving",
     }
 )
@@ -48,7 +52,6 @@ _SEEDING_STATES: frozenset[str] = frozenset(
         "stalledUP",
         "forcedUP",
         "queuedUP",
-        "checkingUP",
     }
 )
 
@@ -225,6 +228,43 @@ class QBittorrentClient(DownloadClient):
             )
         return files
 
+    async def _gather_torrent(
+        self,
+        t: dict,
+        semaphore: asyncio.Semaphore,
+    ) -> TorrentSnapshot | None:
+        """
+        Build a snapshot for a single torrent, or skip it if out of scope
+
+        :param t: A torrent entry from the torrents/info response
+        :param semaphore: Semaphore to limit files request concurrency
+        :return: The torrent snapshot, or None if the torrent should be ignored
+        """
+        try:
+            # Either of these failing indicate that the torrent was saved outside the data
+            # root. We can safely ignore them, as they won't be part of the share scan either.
+            save_path = self._to_relative(t["save_path"])
+            content_path = self._to_relative(t["content_path"])
+        except ValueError:
+            logger.info(f"Skipping torrent {t['hash']} outside data root", exc_info=True)
+            return None
+
+        files = await self._gather_files(t["hash"], t["save_path"], semaphore)
+
+        raw_state = t["state"]
+        return TorrentSnapshot(
+            hash=t["hash"],
+            state=self._normalize_state(raw_state),
+            raw_state=raw_state,
+            ratio=t["ratio"],
+            # NOTE: the API field is "completion_on" (epoch seconds).
+            completed_on=self._epoch_to_datetime(t["completion_on"]),
+            seeding_time=self._seconds_to_timedelta(t["seeding_time"]),
+            content_path=content_path,
+            save_path=save_path,
+            files=files,
+        )
+
     async def gather(self) -> ClientSnapshot:
         version_response = await self._get("/api/v2/app/version")
         server_version = version_response.text.strip()
@@ -233,26 +273,8 @@ class QBittorrentClient(DownloadClient):
         torrents_data = info_response.json()
 
         semaphore = asyncio.Semaphore(_FILES_CONCURRENCY)
-        files_lists = await asyncio.gather(
-            *(self._gather_files(t["hash"], t["save_path"], semaphore) for t in torrents_data)
-        )
+        results = await asyncio.gather(*(self._gather_torrent(t, semaphore) for t in torrents_data))
 
-        torrents: list[TorrentSnapshot] = []
-        for t, files in zip(torrents_data, files_lists, strict=True):
-            raw_state = t["state"]
-            torrents.append(
-                TorrentSnapshot(
-                    hash=t["hash"],
-                    state=self._normalize_state(raw_state),
-                    raw_state=raw_state,
-                    ratio=t["ratio"],
-                    # NOTE: the API field is "completion_on" (epoch seconds).
-                    completed_on=self._epoch_to_datetime(t["completion_on"]),
-                    seeding_time=self._seconds_to_timedelta(t["seeding_time"]),
-                    content_path=self._to_relative(t["content_path"]),
-                    save_path=self._to_relative(t["save_path"]),
-                    files=files,
-                )
-            )
+        torrents = [t for t in results if t is not None]
 
         return ClientSnapshot(server_version=server_version, torrents=torrents)

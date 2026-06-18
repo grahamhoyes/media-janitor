@@ -599,6 +599,44 @@ def test_reclaim_if_removed_excludes_links_outside_scope():
     assert result.torrents[0].bytes_reclaimable_if_removed == 0
 
 
+def test_reclaim_if_removed_excludes_loose_hardlink_not_owned():
+    # The torrent's blob is reclaimable and single-owner, but it has a second
+    # in-scope hardlink in the loose tree that the torrent does not own. Removing
+    # the torrent deletes only its torrents path; the inode survives via the loose
+    # link, so no bytes are actually freed.
+    f = TorrentFile(index=0, path="torrents/pack/a.mkv", size=100)
+    records = [
+        rec("torrents/pack/a.mkv", st_ino=340, size=100, nlink=2),
+        rec("downloads/manual/a.mkv", st_ino=340, size=100, nlink=2),
+    ]
+    t = torrent([f], hash="pack", ratio=5.0)
+    result = run(records, [t])
+    blob = blob_by_ino(result, 340)
+    assert blob.status is Blob.Status.RECLAIMABLE
+    assert blob.cross_seed is False
+    assert blob.links_outside_scope is False
+    assert result.torrents[0].bytes_reclaimable_if_removed == 0
+
+
+def test_reclaim_if_removed_excludes_unreferenced_torrents_hardlink():
+    # The torrent's blob is reclaimable and single-owner, but it has a second
+    # in-scope torrents-tree hardlink that the torrent client does not reference.
+    # Removing the torrent deletes only the path it references; the inode survives
+    # via the other link, so no bytes are actually freed.
+    f = TorrentFile(index=0, path="torrents/clientA/movie.mkv", size=100)
+    records = [
+        rec("torrents/clientA/movie.mkv", st_ino=341, size=100, nlink=2),
+        rec("torrents/clientB/movie.mkv", st_ino=341, size=100, nlink=2),
+    ]
+    t = torrent([f], hash="A", ratio=5.0)
+    result = run(records, [t])
+    blob = blob_by_ino(result, 341)
+    assert blob.status is Blob.Status.RECLAIMABLE
+    assert blob.cross_seed is False
+    assert blob.links_outside_scope is False
+    assert result.torrents[0].bytes_reclaimable_if_removed == 0
+
+
 # --- summary_totals ----------------------------------------------------------
 
 

@@ -304,7 +304,7 @@ async def test_files_request_uses_raw_save_path():
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path == "/api/v2/app/version":
-            return httpx.Response(200, text="v5.0.0")
+            return httpx.Response(200, text="v5.5.0")
         if path == "/api/v2/torrents/info":
             return httpx.Response(200, json=[SINGLE_FILE_TORRENT])
         if path == "/api/v2/torrents/files":

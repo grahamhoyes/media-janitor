@@ -87,6 +87,7 @@ class QBittorrentClient(DownloadClient):
         :param api_key: API key
         :param data_root: Path where the media share is mounted for qBittorrent
         :param client: Optional, httpx client. If given, the caller is responsible for closing it.
+            Headers on the client are modified to inject the API key.
         """
         self._host = host
         self._api_key = api_key

@@ -306,13 +306,26 @@ def build_scan_model(
         blob.links_outside_scope = flags.links_outside_scope
 
     # bytes_reclaimable_if_removed: bytes freed if this whole torrent is removed.
-    # Sum the size of owned blobs that are reclaimable and whose only links belong
-    # to this torrent (not cross-seeded, no links outside the scan). Example: a
-    # 10-file season pack with 6 episodes still hardlinked into the library and 4
-    # orphaned reclaims only the 4. Dedupe owned blobs by identity so a blob listed
-    # under multiple file entries is not double-counted. Runs after flags, since it
-    # reads cross_seed and links_outside_scope.
+    # Removing a torrent deletes only the paths it references, so a blob is freed
+    # only when every hardlink to its inode is a path this torrent owns; otherwise
+    # the inode survives via a link we did not delete (a library copy, a loose
+    # copy, a cross-seed, or an unreferenced torrents path) and frees nothing.
+    #
+    # Sum the size of owned, reclaimable blobs whose owned-link count equals nlink.
+    # This subsumes the cross_seed and links_outside_scope cases: both leave at least
+    # one link unowned.
+    #
+    # Example: a 10-file season pack with 6 episodes still hardlinked into the library
+    # and 4 orphaned reclaims only the 4.
+
+    # Counts of links to a blob owned by a torrent
+    owned_link_counts: dict[tuple[int, int], int] = defaultdict(int)
+    for bt in blob_torrents:
+        owned_link_counts[(id(bt.torrent), id(bt.blob))] += 1
+
     for td in torrent_data:
+        # Dedupe owned blobs by identity so a blob listed under multiple
+        # file entries is not double-counted.
         seen: set[int] = set()
         total = 0
         for blob in td.owned_blobs:
@@ -321,8 +334,7 @@ def build_scan_model(
             seen.add(id(blob))
             if (
                 blob.status is Blob.Status.RECLAIMABLE
-                and not blob.links_outside_scope
-                and not blob.cross_seed
+                and owned_link_counts[(id(td), id(blob))] == blob.nlink
             ):
                 total += blob.size
         td.bytes_reclaimable_if_removed = total

@@ -61,7 +61,7 @@ class TorrentSnapshot:
 
 @dataclass(frozen=True)
 class ClientSnapshot:
-    """A normalized snapshot of a download client and its torrents."""
+    """A normalized snapshot of a download client and its torrents"""
 
     server_version: str
     torrents: list[TorrentSnapshot]
@@ -76,5 +76,5 @@ class DownloadClient(abc.ABC):
 
     @abc.abstractmethod
     async def gather(self) -> ClientSnapshot:
-        """Connect to the client and return a normalized snapshot."""
+        """Connect to the client and return a normalized snapshot"""
         raise NotImplementedError

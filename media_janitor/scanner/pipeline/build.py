@@ -6,7 +6,7 @@ from pathlib import PurePosixPath
 from scanner.clients.base import TorrentSnapshot, TorrentState
 from scanner.models import Blob, Kind, Tree
 from scanner.paths import kind_for, tree_for
-from scanner.pipeline.classify import compute_flags, derive_status
+from scanner.pipeline.classify import classify_status, compute_flags
 from scanner.pipeline.seeding import SeedingReqs, evaluate_seeding
 from scanner.pipeline.walk import FileRecord
 
@@ -22,7 +22,7 @@ ORPHANED_SIDECAR_REASON = "orphaned_sidecar"
 
 
 @dataclass(frozen=True)
-class LinkData:
+class LinkDraft:
     """A path naming a blob, share-relative"""
 
     path: str
@@ -35,7 +35,7 @@ class LinkData:
 
 
 @dataclass
-class TorrentData:
+class TorrentDraft:
     """Per-scan snapshot of a torrent"""
 
     hash: str
@@ -59,12 +59,12 @@ class TorrentData:
     partial_torrent: bool = False
     # TODO: Not yet computed; left at the model default of 0.
     reclaim_if_removed_bytes: int = 0
-    owned_blobs: list[BlobData] = field(default_factory=list)
+    owned_blobs: list[BlobDraft] = field(default_factory=list)
     "Blobs owned by this torrent. Used internally only, not persisted."
 
 
 @dataclass
-class BlobData:
+class BlobDraft:
     """A unique (per scan) file discovered during a scan"""
 
     st_dev: int
@@ -78,7 +78,7 @@ class BlobData:
     seeding_met: bool | None
     latest_seeding_start: datetime | None
     seeding_end: datetime | None
-    links: list[LinkData]
+    links: list[LinkDraft]
     status: Blob.Status = Blob.Status.RECLAIMABLE
     orphan_reason: str = ""
     cross_seed: bool = False
@@ -86,30 +86,30 @@ class BlobData:
     partial_torrent: bool = False
     seedable_idle: bool = False
     links_outside_scope: bool = False
-    owner_torrents: list[TorrentData] = field(default_factory=list)
+    owner_torrents: list[TorrentDraft] = field(default_factory=list)
     "Torrents owning this blob. Used internally only, not persisted."
 
 
 @dataclass(frozen=True)
-class BlobTorrentData:
+class BlobTorrentDraft:
     """Ownership link between a blob and a torrent within a scan"""
 
-    blob: BlobData
-    torrent: TorrentData
+    blob: BlobDraft
+    torrent: TorrentDraft
     file_index: int
 
 
 @dataclass(frozen=True)
-class DeriveResult:
-    blobs: list[BlobData]
-    torrents: list[TorrentData]
-    blob_torrents: list[BlobTorrentData]
+class ScanModel:
+    blobs: list[BlobDraft]
+    torrents: list[TorrentDraft]
+    blob_torrents: list[BlobTorrentDraft]
     summary_totals: dict = field(default_factory=dict)
 
 
-def _blob_kind(links: list[LinkData]) -> Kind:
+def _blob_kind(links: list[LinkDraft]) -> Kind:
     """
-    Derive a blob's kind from its links
+    Determine a blob's kind from its links
 
     A blob is MEDIA if any link is media, else SIDECAR if any link is a
     sidecar, else OTHER.
@@ -129,7 +129,7 @@ def _parent(path: str) -> str:
     return str(PurePosixPath(path).parent)
 
 
-def derive(
+def build_scan_model(
     records: list[FileRecord],
     torrents: list[TorrentSnapshot],
     reqs: SeedingReqs,
@@ -138,7 +138,7 @@ def derive(
     library_roots: list[str],
     torrent_roots: list[str],
     now: datetime,
-) -> DeriveResult:
+) -> ScanModel:
     """
     Assemble blob/link/torrent/blob-torrent value objects and scan totals
 
@@ -158,7 +158,7 @@ def derive(
     for rec in records:
         by_inode[(rec.st_dev, rec.st_ino)].append(rec)
 
-    blobs: list[BlobData] = []
+    blobs: list[BlobDraft] = []
 
     for (st_dev, st_ino), recs in by_inode.items():
         links = [
@@ -168,7 +168,7 @@ def derive(
         # any transient stat disagreement during the walk.
         size = max(rec.size for rec in recs)
         nlink = max(rec.nlink for rec in recs)
-        blob = BlobData(
+        blob = BlobDraft(
             st_dev=st_dev,
             st_ino=st_ino,
             size=size,
@@ -191,22 +191,22 @@ def derive(
     # Hardlinks and cross-seed copies that name the same content collapsed to a
     # single blob during the inode dedupe above, so two torrents naming the same
     # content yield two owners on one blob (a cross-seed).
-    blob_by_path: dict[str, BlobData] = {}
+    blob_by_path: dict[str, BlobDraft] = {}
     for blob in blobs:
         for link in blob.links:
-            # Note reference semantics: two paths can point to the same BlobData object.
+            # Note reference semantics: two paths can point to the same BlobDraft object.
             # Important for below when we mutate blob.torrent_tracked - if there are two
             # links to a blob but only one of them is referenced by the torrent client,
             # the blob will still have torrent_tracked set on both path refs here.
             blob_by_path[link.path] = blob
 
     # Correlate torrents to blobs and evaluate per-torrent seeding
-    torrent_data: list[TorrentData] = []
-    blob_torrents: list[BlobTorrentData] = []
+    torrent_data: list[TorrentDraft] = []
+    blob_torrents: list[BlobTorrentDraft] = []
 
     for t in torrents:
         seeding = evaluate_seeding(t.completed_on, t.ratio, reqs, now)
-        td = TorrentData(
+        td = TorrentDraft(
             hash=t.hash,
             state=t.raw_state,
             normalized_state=t.state,
@@ -226,7 +226,7 @@ def derive(
                 continue
             blob_for_path.torrent_tracked = True
             blob_torrents.append(
-                BlobTorrentData(blob=blob_for_path, torrent=td, file_index=file.index)
+                BlobTorrentDraft(blob=blob_for_path, torrent=td, file_index=file.index)
             )
             # cross-link in both directions
             blob_for_path.owner_torrents.append(td)
@@ -248,7 +248,7 @@ def derive(
     # a media blob's status, so they are classified provisionally here.
     for blob in blobs:
         in_quarantine = any(now - link.mtime < quarantine_window for link in blob.links)
-        blob.status = derive_status(
+        blob.status = classify_status(
             link_trees=tuple(link.tree for link in blob.links),
             torrent_states=tuple(t.normalized_state for t in blob.owner_torrents),
             seeding_met=blob.seeding_met,
@@ -262,7 +262,7 @@ def derive(
     # it colocates with media blobs of differing status, prefer a kept status so
     # a sidecar whose media is staying is never reclaimed. An orphaned sidecar
     # (no colocated media link) becomes reclaimable with an orphan_reason.
-    media_blobs_by_dir: dict[str, list[BlobData]] = defaultdict(list)
+    media_blobs_by_dir: dict[str, list[BlobDraft]] = defaultdict(list)
     for blob in blobs:
         for link in blob.links:
             if link.kind is Kind.MEDIA:
@@ -272,7 +272,7 @@ def derive(
         if blob.kind is not Kind.SIDECAR:
             continue
         # Media blobs colocated with this sidecar blob
-        colocated: list[BlobData] = []
+        colocated: list[BlobDraft] = []
         for link in blob.links:
             colocated.extend(media_blobs_by_dir.get(_parent(link.path), []))
         if not colocated:
@@ -297,7 +297,6 @@ def derive(
         flags = compute_flags(
             link_trees=tuple(link.tree for link in blob.links),
             torrent_states=tuple(t.normalized_state for t in blob.owner_torrents),
-            partial_torrent=blob.partial_torrent,
             nlink=blob.nlink,
             links_found=blob.links_found,
         )
@@ -308,7 +307,7 @@ def derive(
 
     summary_totals = _summary_totals(blobs)
 
-    return DeriveResult(
+    return ScanModel(
         blobs=blobs,
         torrents=torrent_data,
         blob_torrents=blob_torrents,
@@ -321,10 +320,10 @@ def _link_for(
     *,
     library_roots: list[str],
     torrent_roots: list[str],
-) -> LinkData:
-    """Build a LinkData from a FileRecord"""
+) -> LinkDraft:
+    """Build a LinkDraft from a FileRecord"""
     name = PurePosixPath(rec.rel).name
-    return LinkData(
+    return LinkDraft(
         path=rec.rel,
         name=name,
         kind=kind_for(name),
@@ -333,7 +332,7 @@ def _link_for(
     )
 
 
-def _summary_totals(blobs: list[BlobData]) -> dict:
+def _summary_totals(blobs: list[BlobDraft]) -> dict:
     """
     Build the scan summary totals
 

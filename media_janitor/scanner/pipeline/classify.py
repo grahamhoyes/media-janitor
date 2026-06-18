@@ -13,13 +13,6 @@ class BlobFlags:
     "Blob served by more than one torrent"
     multi_link: bool
     "Multiple hard links in the same tree"
-    partial_torrent: bool
-    """
-    The torrent(s) that owns this blob has blobs with different status
-
-    For example, a season pack might have some episodes IN_LIBRARY while
-    others were replaced by higher quality versions and are hence RECLAIMABLE.
-    """
     seedable_idle: bool
     """
     In the library and torrent tree, but isn't seeding.
@@ -30,7 +23,7 @@ class BlobFlags:
     "Link count could not be accounted for by only files in the scan"
 
 
-def derive_status(
+def classify_status(
     *,
     link_trees: tuple[Tree, ...],
     torrent_states: tuple[TorrentState, ...],
@@ -71,7 +64,6 @@ def compute_flags(
     *,
     link_trees: tuple[Tree, ...],
     torrent_states: tuple[TorrentState, ...],
-    partial_torrent: bool,
     nlink: int,
     links_found: int,
 ) -> BlobFlags:
@@ -80,7 +72,6 @@ def compute_flags(
 
     :param link_trees: The Tree of each link (one entry per link, duplicates expected)
     :param torrent_states: State of each owning torrent (empty when untracked)
-    :param partial_torrent: The torrent(s) that owns this blob has blobs with different status
     :param nlink: Hard link count from stat
     :param links_found: Links discovered within the scanned scope
     """
@@ -94,7 +85,6 @@ def compute_flags(
     return BlobFlags(
         cross_seed=len(torrent_states) > 1,
         multi_link=any(count > 1 for count in tree_counts.values()),
-        partial_torrent=partial_torrent,
         seedable_idle=(
             has_library_link
             and has_torrents_link

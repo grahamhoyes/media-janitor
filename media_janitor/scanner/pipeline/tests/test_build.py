@@ -4,10 +4,10 @@ import pytest
 
 from scanner.clients.base import TorrentFile, TorrentSnapshot, TorrentState
 from scanner.models import Blob, Kind, Tree
-from scanner.pipeline.derive import (
+from scanner.pipeline.build import (
     ORPHANED_SIDECAR_REASON,
-    BlobData,
-    derive,
+    BlobDraft,
+    build_scan_model,
 )
 from scanner.pipeline.seeding import SeedingReqs
 from scanner.pipeline.walk import FileRecord
@@ -66,8 +66,8 @@ def torrent(
 
 
 def run(records, torrents=()):
-    """Run derive with the standard fixtures"""
-    return derive(
+    """Run build_scan_model with the standard fixtures"""
+    return build_scan_model(
         list(records),
         list(torrents),
         REQS,
@@ -78,7 +78,7 @@ def run(records, torrents=()):
     )
 
 
-def blob_by_ino(result, st_ino) -> BlobData:
+def blob_by_ino(result, st_ino) -> BlobDraft:
     return next(b for b in result.blobs if b.st_ino == st_ino)
 
 

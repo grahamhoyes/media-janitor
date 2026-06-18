@@ -48,20 +48,17 @@ def test_evaluate_seeding_met(completed_on, ratio, expected_met):
         NOW,
     ],
 )
-def test_started_and_end_when_completed_on_defined(completed_on):
+def test_end_when_completed_on_defined(completed_on):
     result = evaluate_seeding(completed_on, 1.0, REQS, NOW)
-    assert result.started == completed_on
     assert result.end == completed_on + timedelta(days=REQS.min_days)
 
 
-def test_started_and_end_none_when_completed_on_undefined():
+def test_end_none_when_completed_on_undefined():
     result = evaluate_seeding(None, 1.0, REQS, NOW)
-    assert result.started is None
     assert result.end is None
 
 
-def test_both_undefined_started_and_end_none():
+def test_both_undefined_end_none():
     result = evaluate_seeding(None, None, REQS, NOW)
     assert result.met is False
-    assert result.started is None
     assert result.end is None

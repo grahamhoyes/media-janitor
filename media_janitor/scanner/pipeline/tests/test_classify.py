@@ -2,7 +2,7 @@ import pytest
 
 from scanner.clients.base import TorrentState
 from scanner.models import Blob, Tree
-from scanner.pipeline.classify import compute_flags, derive_status
+from scanner.pipeline.classify import classify_status, compute_flags
 
 
 def status_kwargs(
@@ -12,7 +12,7 @@ def status_kwargs(
     seeding_met=None,
     in_quarantine=False,
 ) -> dict:
-    """Build derive_status kwargs with sensible defaults, overriding per case"""
+    """Build classify_status kwargs with sensible defaults, overriding per case"""
     return {
         "link_trees": tuple(link_trees),
         "torrent_states": tuple(owner_states),
@@ -25,7 +25,6 @@ def flags_kwargs(
     *,
     link_trees=(Tree.LOOSE,),
     owner_states=(),
-    partial_torrent=False,
     nlink=1,
     links_found=1,
 ) -> dict:
@@ -33,7 +32,6 @@ def flags_kwargs(
     return {
         "link_trees": tuple(link_trees),
         "torrent_states": tuple(owner_states),
-        "partial_torrent": partial_torrent,
         "nlink": nlink,
         "links_found": links_found,
     }
@@ -109,8 +107,8 @@ def flags_kwargs(
         ),
     ],
 )
-def test_derive_status(kwargs, expected):
-    assert derive_status(**kwargs) == expected
+def test_classify_status(kwargs, expected):
+    assert classify_status(**kwargs) == expected
 
 
 @pytest.mark.parametrize(
@@ -144,11 +142,6 @@ def test_cross_seed(kwargs, expected):
 )
 def test_multi_link(kwargs, expected):
     assert compute_flags(**kwargs).multi_link == expected
-
-
-@pytest.mark.parametrize("value", [True, False])
-def test_partial_torrent_passthrough(value):
-    assert compute_flags(**flags_kwargs(partial_torrent=value)).partial_torrent == value
 
 
 @pytest.mark.parametrize(

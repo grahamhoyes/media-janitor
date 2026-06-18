@@ -149,14 +149,14 @@ class QBittorrentClient(DownloadClient):
 
     @staticmethod
     def _epoch_to_datetime(value: int) -> datetime | None:
-        """Convert epoch seconds to a UTC-aware datetime. <= 0 means undefined."""
+        """Convert epoch seconds to a UTC-aware datetime. <= 0 means undefined"""
         if value <= 0:
             return None
         return datetime.fromtimestamp(value, tz=UTC)
 
     @staticmethod
     def _seconds_to_timedelta(value: int) -> timedelta | None:
-        """Convert a seconds count to a timedelta. <= 0 means undefined."""
+        """Convert a seconds count to a timedelta. <= 0 means undefined"""
         if value <= 0:
             return None
         return timedelta(seconds=value)

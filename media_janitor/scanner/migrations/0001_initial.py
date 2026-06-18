@@ -80,7 +80,7 @@ class Migration(migrations.Migration):
                     "latest_seeding_start",
                     models.DateTimeField(
                         blank=True,
-                        help_text="Latest completed_on (which is when seeding stats) for any "
+                        help_text="Latest completed_on (which is when seeding starts) for any "
                         "torrent of this file",
                         null=True,
                     ),

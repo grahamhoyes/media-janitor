@@ -3,7 +3,7 @@ Scan orchestrator
 
 Coordinates the full scan pipeline: take the single-scan advisory lock, open a
 running Scan, guard against a vanished mount, gather the filesystem walk and the
-download-client snapshot, derive the classification, and atomically publish the
+download-client snapshot, build the scan model, and atomically publish the
 result as a complete Scan (the swap). Older scans are pruned to a fixed window.
 """
 
@@ -18,7 +18,7 @@ from django.utils import timezone
 from scanner.clients.base import ClientSnapshot, DownloadClient
 from scanner.clients.qbittorrent import QBittorrentClient
 from scanner.models import Blob, BlobTorrent, Config, Link, Scan, Torrent
-from scanner.pipeline.derive import DeriveResult, derive
+from scanner.pipeline.build import ScanModel, build_scan_model
 from scanner.pipeline.lock import advisory_lock
 from scanner.pipeline.seeding import SeedingReqs
 from scanner.pipeline.walk import walk
@@ -41,7 +41,7 @@ def run_scan(
 
     Acquires the single-scan advisory lock; if another scan is already running
     this coalesces to a no-op and returns None without creating a Scan. On a
-    missing mount or a download-client/derive/commit failure the Scan is marked
+    missing mount or a download-client/build/commit failure the Scan is marked
     failed and returned, leaving the previously published complete snapshot live.
     On success the new Scan is flipped to complete in a single transaction (the
     atomic swap) and returned.
@@ -95,7 +95,7 @@ def run_scan(
                 min_days=config.seeding_min_days,
                 min_ratio=config.seeding_min_ratio,
             )
-            result = derive(
+            result = build_scan_model(
                 walk_result.records,
                 torrent_snapshot.torrents,
                 reqs,
@@ -108,7 +108,7 @@ def run_scan(
             _commit(scan, result, torrent_snapshot)
         except Exception:
             # A download client outage (QBittorrentError) or any other
-            # gather/derive/commit failure marks the scan failed and leaves the
+            # gather/build/commit failure marks the scan failed and leaves the
             # prior complete snapshot live. We do not re-raise: that would crash
             # the db_worker.
             logger.exception("scan %s failed", scan.pk)
@@ -155,11 +155,11 @@ def _get_torrents(client: DownloadClient | None) -> ClientSnapshot:
     return asyncio.run(client.gather())
 
 
-def _commit(scan: Scan, result: DeriveResult, snapshot: ClientSnapshot) -> None:
+def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
     """
     Atomically insert all snapshot rows and flip the scan to complete
 
-    Derive returns value objects referencing each other by Python identity. We
+    The build step returns value objects referencing each other by Python identity. We
     insert Torrent then Blob rows and build id()-keyed maps to their PKs, then
     insert Link and BlobTorrent rows wired through those maps, all inside one
     transaction. The previous complete scan stays live until this commits.

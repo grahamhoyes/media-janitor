@@ -15,7 +15,6 @@ class SeedingResult:
     """Outcome of a seeding evaluation"""
 
     met: bool
-    started: datetime | None
     end: datetime | None
 
 
@@ -47,4 +46,4 @@ def evaluate_seeding(
     ratio_requirement = ratio is not None and ratio >= reqs.min_ratio
     time_requirement = end is not None and now >= end
 
-    return SeedingResult(met=ratio_requirement or time_requirement, started=started, end=end)
+    return SeedingResult(met=ratio_requirement or time_requirement, end=end)

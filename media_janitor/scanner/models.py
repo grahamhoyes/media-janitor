@@ -41,7 +41,7 @@ class Config(models.Model):
     def __str__(self) -> str:
         return "Scan configuration"
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
         self.pk = 1
         super().save(*args, **kwargs)
 
@@ -110,7 +110,7 @@ class Tree(models.TextChoices):
     """
     A folder type
 
-    Library and Torrents are the main recognized trees, other is for anything else
+    Library and Torrents are the main recognized trees, loose is for anything else
     """
 
     LIBRARY = "library"
@@ -158,7 +158,7 @@ class Blob(models.Model):
     latest_seeding_start = models.DateTimeField(
         null=True,
         blank=True,
-        help_text="Latest completed_on (which is when seeding stats) for any torrent of this file",
+        help_text="Latest completed_on (which is when seeding starts) for any torrent of this file",
     )
     seeding_end = models.DateTimeField(null=True, blank=True)
     orphan_reason = models.CharField(max_length=64, blank=True, default="")

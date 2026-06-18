@@ -238,6 +238,28 @@ def test_cross_seed_two_torrents_one_blob():
     assert len(result.blob_torrents) == 2
 
 
+def test_single_torrent_two_hardlinked_files_not_cross_seed():
+    # One torrent lists two file entries that are hardlinks of the same inode
+    # (eg after a hardlink dedupe tool collapsed identical files). The walk
+    # dedupes them into a single blob with two links, both owned by the same
+    # torrent. cross_seed means "served by more than one torrent", so a single
+    # owner must not be counted twice.
+    f1 = TorrentFile(index=0, path="torrents/pack/a.mkv", size=100)
+    f2 = TorrentFile(index=1, path="torrents/pack/b.mkv", size=100)
+    records = [
+        rec("torrents/pack/a.mkv", st_ino=73, nlink=2),
+        rec("torrents/pack/b.mkv", st_ino=73, nlink=2),
+    ]
+    t = torrent([f1, f2], hash="A", ratio=5.0)
+    result = run(records, [t])
+    assert len(result.blobs) == 1
+    blob = result.blobs[0]
+    assert blob.cross_seed is False
+    assert blob.torrent_tracked is True
+    # Both file entries still record a blob-torrent link (one per file index)
+    assert len(result.blob_torrents) == 2
+
+
 def test_cross_seed_seeding_met_is_and_across_owners():
     # One torrent met, one not -> blob seeding_met False
     f1 = TorrentFile(index=0, path="torrents/a/x.mkv", size=100)

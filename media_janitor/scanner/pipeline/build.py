@@ -240,9 +240,16 @@ def build_scan_model(
             blob_torrents.append(
                 BlobTorrentDraft(blob=blob_for_path, torrent=td, file_index=file.index)
             )
-            # cross-link in both directions
-            blob_for_path.owner_torrents.append(td)
-            td.owned_blobs.append(blob_for_path)
+            # cross-link in both directions, deduping by identity. A torrent can
+            # reference one blob through several file entries (eg two of its files
+            # are hardlinks of the same inode if a dedupe tool was run), but
+            # owner_torrents/owned_blobs model distinct ownership: a duplicate would
+            # inflate cross_seed (owner count) and double-count seeding.
+            # blob_torrents keeps one entry per file index.
+            if not any(o is td for o in blob_for_path.owner_torrents):
+                blob_for_path.owner_torrents.append(td)
+            if not any(b is blob_for_path for b in td.owned_blobs):
+                td.owned_blobs.append(blob_for_path)
 
     # Roll up per-blob seeding, then classify each blob's status from it. Both are
     # per-blob with no cross-blob dependency, so they share one pass. Sidecars are

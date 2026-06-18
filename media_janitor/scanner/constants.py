@@ -1,5 +1,3 @@
-"""Static classification sets used by the scan pipeline."""
-
 # Directory names to skip entirely during the filesystem walk.
 IGNORE_DIRS: frozenset[str] = frozenset(
     {

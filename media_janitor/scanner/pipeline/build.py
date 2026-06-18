@@ -18,6 +18,17 @@ _KEPT_STATUSES: frozenset[Blob.Status] = frozenset(
     {Blob.Status.IN_LIBRARY, Blob.Status.IN_PROGRESS, Blob.Status.SEEDING_HOLD}
 )
 
+# Provisional statuses a sidecar earns from its own torrent ownership or recent
+# modification, independent of what it colocates with. Binding must never
+# downgrade these: a sidecar held for its own seeding (SEEDING_HOLD) or actively
+# in flight/quarantined (IN_PROGRESS) would harm its torrent or lose fresh data
+# if reclaimed. IN_LIBRARY is deliberately excluded: a library-tree sidecar earns
+# that status only from placement, so it should still follow colocated media or
+# be flagged an orphan.
+_SELF_HELD_STATUSES: frozenset[Blob.Status] = frozenset(
+    {Blob.Status.IN_PROGRESS, Blob.Status.SEEDING_HOLD}
+)
+
 ORPHANED_SIDECAR_REASON = "orphaned_sidecar"
 
 
@@ -270,6 +281,12 @@ def build_scan_model(
 
     for blob in blobs:
         if blob.kind is not Kind.SIDECAR:
+            continue
+        # A sidecar may be owned by a torrent of its own (eg a torrent that ships a
+        # .srt/.nfo) or be freshly modified. Its provisional status already
+        # reflects that, so a sidecar held for its own seeding or in flight must
+        # never be downgraded by binding, regardless of what it colocates with.
+        if blob.status in _SELF_HELD_STATUSES:
             continue
         # Media blobs colocated with this sidecar blob
         colocated: list[BlobDraft] = []

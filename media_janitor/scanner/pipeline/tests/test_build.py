@@ -528,6 +528,42 @@ def test_sidecar_prefers_seeding_hold_over_reclaimable_when_mixed():
     assert sidecar.orphan_reason == ""
 
 
+def test_self_held_sidecar_not_reclaimed_by_colocated_reclaimable_media():
+    # A sidecar is itself owned by a torrent that has not met seeding, so deleting
+    # it would harm its own still-seeding torrent. It is colocated only with a
+    # reclaimable media blob owned by a different torrent. Binding must not discard
+    # the sidecar's own seeding hold.
+    sub = TorrentFile(index=0, path="torrents/d/sub.srt", size=50)
+    sub_torrent = torrent([sub], hash="sub", ratio=0.1, completed_on=NOW - timedelta(days=1))
+    media = TorrentFile(index=0, path="torrents/d/film.mkv", size=100)
+    # A different torrent that has met seeding, so its media blob is reclaimable.
+    media_torrent = torrent([media], hash="film", ratio=3.0, completed_on=NOW - timedelta(days=30))
+    records = [
+        rec("torrents/d/film.mkv", st_ino=160, nlink=1),
+        rec("torrents/d/sub.srt", st_ino=161, nlink=1),
+    ]
+    result = run(records, [sub_torrent, media_torrent])
+    film = blob_by_ino(result, 160)
+    sidecar = blob_by_ino(result, 161)
+    assert film.status is Blob.Status.RECLAIMABLE
+    assert sidecar.kind is Kind.SIDECAR
+    assert sidecar.status is Blob.Status.SEEDING_HOLD
+    assert sidecar.orphan_reason == ""
+
+
+def test_self_held_orphan_sidecar_not_reclaimed():
+    # A sidecar owned by a torrent that has not met seeding, with no colocated
+    # media. It must keep its own seeding hold rather than be marked an orphan and
+    # reclaimed, which would harm its still-seeding torrent.
+    sub = TorrentFile(index=0, path="torrents/lonely/sub.srt", size=50)
+    sub_torrent = torrent([sub], hash="sub", ratio=0.1, completed_on=NOW - timedelta(days=1))
+    result = run([rec("torrents/lonely/sub.srt", st_ino=162, nlink=1)], [sub_torrent])
+    sidecar = blob_by_ino(result, 162)
+    assert sidecar.kind is Kind.SIDECAR
+    assert sidecar.status is Blob.Status.SEEDING_HOLD
+    assert sidecar.orphan_reason == ""
+
+
 # --- bytes_reclaimable_if_removed ------------------------------------------------
 
 

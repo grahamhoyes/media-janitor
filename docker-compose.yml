@@ -1,3 +1,34 @@
+# Local development stack
+#
+# This uses the Django development server and volume-mounts the project files.
+# Do not use this as a template for a real deployment.
+#
+# - db:     Postgres. For host-local development (uv run ...), bring up just this:
+#               docker compose up -d db
+# - web:    Django dev server on http://localhost:8000, hot reload
+# - worker: db_worker, which runs scans. Mounts the NAS media share over NFS, or
+#           can be changed to a local volume.
+# - tailwind: compiles CSS in watch mode
+#
+# Config is read automatically from .env (copy from .env.example)
+name: media-janitor
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: development/Dockerfile
+  image: media-janitor-dev
+  # Config from .env. DATABASE_URL and SHARE_ROOT differ inside the container
+  # (db reached by service name, share mounted at /media) and take precedence.
+  env_file:
+    - .env
+  environment:
+    DATABASE_URL: postgres://media_janitor:media_janitor@db:5432/media_janitor
+    SHARE_ROOT: /media
+  depends_on:
+    db:
+      condition: service_healthy
+
 services:
   db:
     image: postgres:18
@@ -15,5 +46,39 @@ services:
       timeout: 5s
       retries: 5
 
+  web:
+    <<: *app
+    # Local development server only. Don't use runserver in a real deployment.
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./media_janitor:/app/media_janitor
+    ports:
+      - "8000:8000"
+
+  worker:
+    <<: *app
+    command: python manage.py db_worker
+    # User and group IDs should match what the NFS server expects
+    user: "${NFS_UID:-1000}:${NFS_GID:-1000}"
+    volumes:
+      - ./media_janitor:/app/media_janitor
+      # NFS mount. Mount location must match SHARE_ROOT above.
+      - media:/media:ro
+
+  tailwind:
+    <<: *app
+    command: python manage.py tailwind start
+    volumes:
+      - ./media_janitor:/app/media_janitor
+
 volumes:
   pgdata:
+
+  # NFS mount of the NAS media share.
+  # The server address and export path come from .env.
+  media:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=${NFS_SERVER:?set NFS_SERVER in .env},nfsvers=4.1,ro,noatime,hard"
+      device: ":${NFS_EXPORT_PATH:-/volume1/media}"

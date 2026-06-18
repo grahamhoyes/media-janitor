@@ -5,6 +5,7 @@ Django settings for the Media Janitor project.
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # media_janitor/ (holds manage.py, config/, the apps). The repo root is one level up.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -19,6 +20,8 @@ env = environ.Env(
 environ.Env.read_env(REPO_ROOT / ".env")
 
 SECRET_KEY = env("SECRET_KEY")
+if not SECRET_KEY:
+    raise ImproperlyConfigured("SECRET_KEY environment variable not set")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 

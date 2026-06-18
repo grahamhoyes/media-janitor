@@ -1,0 +1,13 @@
+.git
+.idea
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+**/__pycache__
+*.pyc
+.env
+development
+LICENSE
+staticfiles
+media_janitor/theme/static_src/node_modules

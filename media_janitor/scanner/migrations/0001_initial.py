@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
                 (
                     "links_found",
                     models.PositiveIntegerField(
-                        help_text="Number of hard links found during the scan. May be > nlink if "
+                        help_text="Number of hard links found during the scan. May be < nlink if "
                         "some links are outside of the scanned tree."
                     ),
                 ),

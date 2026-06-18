@@ -138,7 +138,7 @@ class Blob(models.Model):
     nlink = models.PositiveIntegerField()
     links_found = models.PositiveIntegerField(
         help_text="Number of hard links found during the scan. "
-        "May be > nlink if some links are outside of the scanned tree."
+        "May be < nlink if some links are outside of the scanned tree."
     )
     status = models.CharField(choices=Status, max_length=16)
     kind = models.CharField(choices=Kind, max_length=16)

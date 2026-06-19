@@ -20,6 +20,7 @@ dev = [
     "django-browser-reload>=1.21.0",
     "django-stubs>=6.0.5",
     "honcho>=2.0.0",
+    "ipython>=9.14.1",
     "mypy>=2.1.0",
     "pre-commit>=4.6.0",
     "pytest>=9.1.0",

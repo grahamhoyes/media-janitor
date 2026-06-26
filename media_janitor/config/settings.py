@@ -48,8 +48,8 @@ INSTALLED_APPS = [
     "django_tasks_db",
     "django_htmx",
     "tailwind",
-    "theme",
     # First-party
+    "theme",
     "scanner",
     "web",
 ]
@@ -78,6 +78,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "web.context_processors.current_scan",
+                "theme.context_processors.theme_names",
             ],
         },
     },

@@ -4,7 +4,8 @@
 @source "../../../**/*.{html,py,js,svg}";
 
 @plugin "daisyui" {
-  themes: business --default, corporate;
+  /* Must be added to theme/context_processors.py */
+  themes: corporate --default, business;
 }
 
 /* == Daisy UI theme overrides ============================================= */

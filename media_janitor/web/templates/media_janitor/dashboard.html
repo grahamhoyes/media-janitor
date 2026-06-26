@@ -6,42 +6,45 @@
   Real views to follow
 {% endcomment %}
 
-{% block page_title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock page_title %}
 
 {% block content %}
-<div class="card bg-base-100 shadow-md">
-  <div class="card-body gap-4">
-    <div class="flex items-center justify-between">
-      <h1 class="card-title">Media Janitor</h1>
-      <span class="badge badge-success">scaffold</span>
-    </div>
-    <p class="text-base-content/60 text-sm">
-      Logged in as <strong>{{ request.user.username }}</strong>. The stack is wired and ready.
-    </p>
-
-    {# Alpine: client-side toggle #}
-    <div x-data="{ open: false }" class="rounded border border-base-300 p-3">
-      <button class="btn btn-sm btn-primary" @click="open = !open"
-              x-text="open ? 'Hide Alpine panel' : 'Show Alpine panel'">Toggle</button>
-      <p x-show="open" x-cloak x-transition class="mt-2 text-sm text-base-content/70">
-        Alpine.js is working.
+  <div class="card bg-base-100 shadow-md">
+    <div class="card-body gap-4">
+      <div class="flex items-center justify-between">
+        <h1 class="card-title">Media Janitor</h1>
+        <span class="badge badge-success">scaffold</span>
+      </div>
+      <p class="text-base-content/60 text-sm">
+        Logged in as <strong>{{ request.user.username }}</strong>. The stack is wired and ready.
       </p>
-    </div>
 
-    {# HTMX: server partial swap #}
-    <div class="rounded border border-base-300 p-3">
-      <button class="btn btn-sm btn-secondary" hx-get="{% url 'ping' %}" hx-target="#ping-result" hx-swap="innerHTML">
-        Ping server (HTMX)
-      </button>
-      <div id="ping-result" class="mt-2 text-sm text-base-content/70"></div>
-    </div>
+      {# Alpine: client-side toggle #}
+      <div x-data="{ open: false }" class="rounded border border-base-300 p-3">
+        <button class="btn btn-sm btn-primary"
+                @click="open = !open"
+                x-text="open ? 'Hide Alpine panel' : 'Show Alpine panel'">Toggle</button>
+        <p x-show="open"
+           x-cloak
+           x-transition
+           class="mt-2 text-sm text-base-content/70">Alpine.js is working.</p>
+      </div>
 
-    <div class="flex justify-end">
-      <form method="post" action="{% url 'logout' %}">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
-      </form>
+      {# HTMX: server partial swap #}
+      <div class="rounded border border-base-300 p-3">
+        <button class="btn btn-sm btn-secondary"
+                hx-get="{% url 'ping' %}"
+                hx-target="#ping-result"
+                hx-swap="innerHTML">Ping server (HTMX)</button>
+        <div id="ping-result" class="mt-2 text-sm text-base-content/70"></div>
+      </div>
+
+      <div class="flex justify-end">
+        <form method="post" action="{% url 'logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
+        </form>
+      </div>
     </div>
   </div>
-</div>
-{% endblock %}
+{% endblock content %}

@@ -1,5 +1,3 @@
-"""Template context processors for the web app"""
-
 from django.http import HttpRequest
 
 from scanner.models import Scan

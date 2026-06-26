@@ -1,23 +1,96 @@
-{% load static tailwind_tags %}
+{% load static tailwind_tags janitor %}
 
 <!DOCTYPE html>
-<html lang="en" data-theme="corporate">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}{% block page_title %}{% endblock %} | Media Janitor{% endblock %}</title>
-  {% tailwind_css %}
-  <style>[x-cloak] { display: none !important; }</style>
-  <script defer src="{% static 'vendor/alpine-3.15.12.min.js' %}"></script>
-  <script src="{% static 'vendor/htmx-2.0.10.min.js' %}"></script>
-</head>
+<html lang="en" data-theme="{{ light_theme }}">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>
+      {% block title %}
+        {% block page_title %}
+        {% endblock page_title %}
+        | Media Janitor
+      {% endblock title %}
+    </title>
+    {# Apply the persisted theme #}
+    <script>
+      (function() {
+        let t = localStorage.getItem("mj-theme");
+        if (t !== "{{ light_theme }}" && t !== "{{ dark_theme }}") {
+          t = "{{ light_theme }}";
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script>
+    {% tailwind_css %}
+    <script defer src="{% static 'vendor/alpine-3.15.12.min.js' %}"></script>
+    <script src="{% static 'vendor/htmx-2.0.10.min.js' %}"></script>
+  </head>
 
-{% block body %}
-<body class="min-h-screen bg-base-200 text-base-content" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-  <main class="max-w-3xl mx-auto px-4 py-10">
-    {% block content %}{% endblock %}
-  </main>
-</body>
-{% endblock %}
+  {% block body %}
+    <body class="min-h-screen bg-base-200 text-base-content text-sm"
+          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+
+      {# Top navbar: brand, primary nav, scan stamp, theme toggle #}
+      <header class="navbar bg-base-100 border-b border-base-300 px-4 min-h-12 gap-2">
+        <div class="navbar-start gap-3">
+          <a href="{% url 'dashboard' %}"
+             class="font-bold text-base tracking-tight">Media Janitor</a>
+        </div>
+
+        {% if request.user.is_authenticated %}
+          {# TODO: Mobile navbar (part of the selection drawer) #}
+          <nav class="navbar-center hidden md:flex">
+            <ul class="menu menu-horizontal menu-sm px-1 gap-0.5">
+              <li><a href="{% url 'dashboard' %}">Dashboard</a></li>
+              {# TODO: Link to reclaim summary page #}
+              <li><a href="#">Reclaim summary</a></li>
+              {# TODO: Link to reclaim list page #}
+              <li><a href="#">Reclaim list</a></li>
+            </ul>
+          </nav>
+        {% endif %}
+
+        <div class="navbar-end gap-2">
+          {% if request.user.is_authenticated and current_scan %}
+            <span class="hidden lg:inline font-mono text-xs text-base-content/40">Last scan {{ current_scan.as_of|date:"Y-m-d H:i" }}</span>
+          {% endif %}
+
+          {# TODO: Selection-bin button goes here #}
+
+          {# Theme toggle, persisted in localStorage #}
+          <label class="swap swap-rotate btn btn-ghost btn-sm btn-square"
+                 x-data="{
+                           theme: document.documentElement.dataset.theme || '{{ light_theme }}',
+                           toggle() {
+                             this.theme = this.theme === '{{ light_theme }}' ? '{{ dark_theme }}' : '{{ light_theme }}';
+                             document.documentElement.dataset.theme = this.theme;
+                             localStorage.setItem('mj-theme', this.theme);
+                           }
+                         }"
+                 aria-label="Toggle theme">
+            <input type="checkbox"
+                   @change="toggle()"
+                   :checked="theme === '{{ dark_theme }}'">
+            {# Sun icon shown in dark mode (click to go light) #}
+            <span class="swap-on size-4">{% include "theme/icons/sun.svg" %}</span>
+            {# Moon icon shown in light mode (click to go dark) #}
+            <span class="swap-off size-4">{% include "theme/icons/moon.svg" %}</span>
+          </label>
+        </div>
+      </header>
+
+      {# Persistent headline band. Omitted for anonymous users and when there is no completed scan. #}
+      {% if request.user.is_authenticated and current_scan %}
+        {% headline_band current_scan %}
+      {% endif %}
+
+      <main class="max-w-7xl mx-auto px-4 py-6">
+        {% block content %}
+        {% endblock content %}
+      </main>
+
+    </body>
+  {% endblock body %}
 
 </html>

@@ -1,6 +1,6 @@
 from django import template
 
-from scanner.models import Blob
+from scanner.models import Blob, Scan
 from web import display
 
 register = template.Library()
@@ -50,4 +50,20 @@ def status_badge(blob: Blob) -> dict[str, str]:
     return {
         "label": display.status_label(blob.status),
         "badge": display.status_badge_class(blob.status),
+    }
+
+
+@register.inclusion_tag("media_janitor/fragments/headline_band.html")
+def headline_band(scan: Scan) -> dict[str, object]:
+    """
+    Render the headline band for a scan
+
+    Shows the scan's reclaimable byte total and a proportional bar of all space by
+    status. Callers must only invoke this when a scan exists.
+
+    :param scan: the current scan to summarize
+    """
+    return {
+        "reclaimable_bytes": (scan.summary_totals or {}).get("reclaimable_bytes", 0),
+        "segments": display.headline_segments(scan),
     }

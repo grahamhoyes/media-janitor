@@ -87,9 +87,23 @@ class Scan(models.Model):
         help_text="qBittorrent application version observed during the scan",
     )
 
+    # TODO: Split reclaimable_bytes into its own field for better type safety.
+    #  mypy doesn't like when we use a TypedDict here.
     summary_totals = models.JSONField[dict, dict](
         default=dict, help_text="Computed totals: reclaimable totals plus per-status breakdown"
     )
+    """
+    Format:
+    {
+        "reclaimable_bytes": int,
+        "by_status": {
+            [Blob.Status]: {
+              "count": int,
+              "bytes": int,
+            }
+        }
+    }
+    """
 
     class Meta:
         ordering = ["-as_of"]

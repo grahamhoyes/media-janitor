@@ -44,6 +44,7 @@ indent = 2
 preserve_blank_lines = true
 format_js = true
 format_attribute_js_json = true
+ignore = "H030,H031"
 
 [tool.djlint.js]
 indent_size = 2

@@ -208,6 +208,13 @@ Tests:
 uv run pytest
 ```
 
+Linting and formatting for Django templates:
+
+```bash
+uv run djlint .
+uv run djlint --reformat .
+```
+
 [pre-commit](https://pre-commit.com/) hooks are available to run these on commit. To configure them:
 
 ```bash

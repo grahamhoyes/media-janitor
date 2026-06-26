@@ -19,6 +19,7 @@ dependencies = [
 dev = [
     "django-browser-reload>=1.21.0",
     "django-stubs>=6.0.5",
+    "djlint>=1.39.4",
     "honcho>=2.0.0",
     "ipython>=9.14.1",
     "mypy>=2.1.0",
@@ -36,6 +37,16 @@ extend-exclude = ["media_janitor/theme/static_src/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "DJ"]
+
+[tool.djlint]
+profile = "django"
+indent = 2
+preserve_blank_lines = true
+format_js = true
+format_attribute_js_json = true
+
+[tool.djlint.js]
+indent_size = 2
 
 [tool.mypy]
 plugins = ["mypy_django_plugin.main"]

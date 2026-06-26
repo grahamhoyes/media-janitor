@@ -14,14 +14,19 @@ from scanner.models import (
     Tree,
 )
 
+pytestmark = pytest.mark.django_db()
 
-def make_scan() -> Scan:
-    return Scan.objects.create(
-        as_of=timezone.now(),
-        seeding_min_days=14,
-        seeding_min_ratio=1.0,
-        quarantine_window=timedelta(minutes=30),
-    )
+
+def make_scan(status: Scan.Status = Scan.Status.COMPLETE, **kwargs) -> Scan:
+    defaults = {
+        "status": status,
+        "as_of": timezone.now(),
+        "seeding_min_days": 14,
+        "seeding_min_ratio": 1.0,
+        "quarantine_window": timedelta(minutes=30),
+    }
+    defaults.update(kwargs)
+    return Scan.objects.create(**defaults)
 
 
 def make_blob(scan: Scan, st_ino: int = 1) -> Blob:
@@ -37,7 +42,6 @@ def make_blob(scan: Scan, st_ino: int = 1) -> Blob:
     )
 
 
-@pytest.mark.django_db
 def test_relations_resolve():
     scan = make_scan()
     blob = make_blob(scan)
@@ -68,7 +72,6 @@ def test_relations_resolve():
     assert torrent.blob_torrents.get().blob == blob
 
 
-@pytest.mark.django_db
 def test_unique_inode_per_scan():
     scan = make_scan()
     make_blob(scan, st_ino=1)
@@ -77,7 +80,6 @@ def test_unique_inode_per_scan():
         make_blob(scan, st_ino=1)
 
 
-@pytest.mark.django_db
 def test_same_inode_allowed_across_scans():
     scan_a = make_scan()
     scan_b = make_scan()
@@ -86,3 +88,25 @@ def test_same_inode_allowed_across_scans():
     make_blob(scan_b, st_ino=1)
 
     assert Blob.objects.filter(st_dev=64, st_ino=1).count() == 2
+
+
+def test_get_most_recent_complete_scan():
+    now = timezone.now()
+    older = make_scan(status=Scan.Status.COMPLETE, as_of=now - timedelta(hours=2))
+    newer = make_scan(status=Scan.Status.COMPLETE, as_of=now - timedelta(hours=1))
+
+    # Newer scans that are not complete should be ignored
+    make_scan(status=Scan.Status.RUNNING, as_of=now - timedelta(minutes=30))
+    make_scan(status=Scan.Status.FAILED, as_of=now)
+
+    current = Scan.current()
+
+    assert current == newer
+    assert current != older
+
+
+def test_get_current_scan_returns_none_when_none_complete():
+    make_scan(status=Scan.Status.RUNNING)
+    make_scan(status=Scan.Status.FAILED)
+
+    assert Scan.current() is None

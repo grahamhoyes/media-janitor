@@ -97,6 +97,14 @@ class Scan(models.Model):
     def __str__(self) -> str:
         return f"Scan {self.pk} ({self.status})"
 
+    @classmethod
+    def current(cls) -> Scan | None:
+        """
+        Return the most recent completed scan, or None
+        """
+
+        return cls.objects.filter(status=Scan.Status.COMPLETE).order_by("-as_of").first()
+
 
 class Kind(models.TextChoices):
     """File / blob type"""

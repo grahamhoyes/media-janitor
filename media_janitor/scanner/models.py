@@ -148,9 +148,25 @@ class Blob(models.Model):
 
     class Status(models.TextChoices):
         RECLAIMABLE = "reclaimable"
+        """
+        The blob is safe to delete because it has no library link, and is either
+        not part of a torrent or its torrents have met their seeding requirements.
+        """
         SEEDING_HOLD = "seeding_hold"
+        """
+        The blob has no library link, but cannot be deleted because seeding
+        requirements for an owning torrent are not met.
+        """
         IN_LIBRARY = "in_library"
+        """
+        The blob has a link under a library root. It cannot be deleted without
+        being removed from the library.
+        """
         IN_PROGRESS = "in_progress"
+        """
+        The torrent owning this blob is downloading/checking/moving, or a link
+        to it was recently modified
+        """
 
     # TODO: Convert all of these to on_delete=models.DB_CASCADE once Django 6.1 is out
     scan = models.ForeignKey(Scan, on_delete=models.CASCADE, related_name="blobs")
@@ -182,14 +198,40 @@ class Blob(models.Model):
         blank=True,
         help_text="Latest completed_on (which is when seeding starts) for any torrent of this file",
     )
-    seeding_end = models.DateTimeField(null=True, blank=True)
-    orphan_reason = models.CharField(max_length=64, blank=True, default="")
+    seeding_end = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When seeding requirements of the associated torrent will be met if "
+        "seeding_met is false",
+    )
+    orphan_reason = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Reason that a non-media file couldn't be linked to a media file "
+        "and is safe for deletion",
+    )
 
-    cross_seed = models.BooleanField(default=False)
-    multi_link = models.BooleanField(default=False)
-    partial_torrent = models.BooleanField(default=False)
-    seedable_idle = models.BooleanField(default=False)
-    links_outside_scope = models.BooleanField(default=False)
+    cross_seed = models.BooleanField(
+        default=False, help_text="Blob served by more than one torrent"
+    )
+    multi_link = models.BooleanField(
+        default=False, help_text="Multiple hard links in the same tree"
+    )
+    partial_torrent = models.BooleanField(
+        default=False,
+        help_text="A torrent linked to this blob has blobs that do not all share the same status",
+    )
+    seedable_idle = models.BooleanField(
+        default=False,
+        help_text="In the library and torrent trees, but isn't seeding. "
+        "Covers the case of no owning torrent or an owning torrent that is stopped. "
+        "Not set when the only owning torrents are in an error or other state.",
+    )
+    links_outside_scope = models.BooleanField(
+        default=False,
+        help_text="Link count could not be accounted for by only files under the scan root",
+    )
 
     torrents = models.ManyToManyField["Torrent", "BlobTorrent"](
         "Torrent", through="BlobTorrent", related_name="blobs"
@@ -240,13 +282,26 @@ class Torrent(models.Model):
         help_text="When the torrent completed downloading and seeding started",
     )
 
-    seeding_time = models.DurationField(null=True, blank=True)
+    seeding_time = models.DurationField(
+        null=True,
+        blank=True,
+        help_text="How long since the torrent started seeding (does not account for if "
+        "the torrent was stopped)",
+    )
     content_path = models.TextField()
     save_path = models.TextField()
 
-    seeding_met = models.BooleanField(default=False)
-    seeding_end = models.DateTimeField(null=True, blank=True)
-    partial_torrent = models.BooleanField(default=False)
+    seeding_met = models.BooleanField(
+        default=False, help_text="Whether seeding requirements have been met"
+    )
+    seeding_end = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When seeding requirements will be met if seeding_met is false",
+    )
+    partial_torrent = models.BooleanField(
+        default=False, help_text="Blobs in this torrent do not all share the same status"
+    )
     bytes_reclaimable_if_removed = models.BigIntegerField(
         default=0,
         help_text="Bytes freed if this whole torrent is removed: the size of its reclaimable "

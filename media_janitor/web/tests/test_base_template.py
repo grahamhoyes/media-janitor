@@ -14,10 +14,22 @@ def test_headline_segments_ordering_labels_and_pcts():
     segments = headline_segments(scan)
 
     keys = [seg["key"] for seg in segments]
-    assert keys == ["reclaimable", "seeding_hold", "in_library", "in_progress"]
+    assert keys == [
+        "reclaimable",
+        "linked_externally",
+        "seeding_hold",
+        "in_library",
+        "in_progress",
+    ]
 
     labels = [seg["label"] for seg in segments]
-    assert labels == ["Reclaimable", "Seeding hold", "In library", "In progress"]
+    assert labels == [
+        "Reclaimable",
+        "Linked externally",
+        "Seeding hold",
+        "In library",
+        "In progress",
+    ]
 
     by_key = {seg["key"]: seg for seg in segments}
     # Some wiggle room on the sum due to rounding errors, which we're fine with
@@ -25,6 +37,8 @@ def test_headline_segments_ordering_labels_and_pcts():
     assert sum(x["pct"] for x in by_key.values()) == pytest.approx(100, abs=0.02)
 
     assert by_key["reclaimable"]["bytes"] == 6000
+    assert by_key["linked_externally"]["bytes"] == 0
+    assert by_key["linked_externally"]["pct"] == 0
 
     assert by_key["reclaimable"]["bar_class"] == "bg-success"
     assert by_key["seeding_hold"]["dot_class"] == "bg-warning"
@@ -46,6 +60,7 @@ def test_headline_segments_zero_total_no_division_error():
     segments = headline_segments(scan)
     assert [seg["key"] for seg in segments] == [
         "reclaimable",
+        "linked_externally",
         "seeding_hold",
         "in_library",
         "in_progress",
@@ -57,7 +72,7 @@ def test_headline_segments_zero_total_no_division_error():
 def test_headline_segments_empty_summary_totals():
     scan = Scan(summary_totals={})
     segments = headline_segments(scan)
-    assert len(segments) == 4
+    assert len(segments) == 5
     assert all(seg["pct"] == 0 for seg in segments)
     assert all(seg["bytes"] == 0 for seg in segments)
 

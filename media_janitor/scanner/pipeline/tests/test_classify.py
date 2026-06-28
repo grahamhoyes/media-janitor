@@ -2,7 +2,7 @@ import pytest
 
 from scanner.clients.base import TorrentState
 from scanner.models import Blob, Tree
-from scanner.pipeline.classify import classify_status, compute_flags
+from scanner.pipeline.classify import compute_flags, provisionally_classify_status
 
 
 def status_kwargs(
@@ -108,7 +108,7 @@ def flags_kwargs(
     ],
 )
 def test_classify_status(kwargs, expected):
-    assert classify_status(**kwargs) == expected
+    assert provisionally_classify_status(**kwargs) == expected
 
 
 @pytest.mark.parametrize(

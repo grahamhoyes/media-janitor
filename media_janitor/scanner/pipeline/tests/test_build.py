@@ -313,14 +313,17 @@ def test_multi_link_two_hardlinks_same_tree():
 
 
 def test_links_outside_scope_excluded_from_reclaim():
-    # nlink=3 but only 1 link found -> outside scope, excluded from reclaim total
+    # nlink=3 but only 1 link found -> outside scope. The blob would otherwise be
+    # reclaimable but is overridden to linked_externally and excluded from the
+    # reclaim total.
     result = run([rec("random/orphan.mkv", st_ino=90, nlink=3)])
     blob = result.blobs[0]
     assert blob.links_outside_scope is True
-    assert blob.status is Blob.Status.RECLAIMABLE
+    assert blob.status is Blob.Status.LINKED_EXTERNALLY
     assert result.summary_totals["reclaimable_bytes"] == 0
-    # but it still counts in the by_status breakdown
-    assert result.summary_totals["by_status"][Blob.Status.RECLAIMABLE.value]["count"] == 1
+    # No reclaimable blob remains, and it lands in the linked_externally bucket.
+    assert result.summary_totals["by_status"][Blob.Status.RECLAIMABLE.value]["count"] == 0
+    assert result.summary_totals["by_status"][Blob.Status.LINKED_EXTERNALLY.value]["count"] == 1
 
 
 def test_reclaimable_within_scope_counted():
@@ -341,6 +344,96 @@ def test_links_outside_scope_flag(nlink, found, expected):
     records = [rec(f"random/f{i}.bin", st_ino=190, nlink=nlink) for i in range(found)]
     result = run(records)
     assert result.blobs[0].links_outside_scope is expected
+
+
+# --- linked_externally -------------------------------------------------------
+
+
+def test_linked_externally_tracked_seeding_met_outside_scope():
+    # Torrent-tracked, seeding met, no library link: would be reclaimable, but a
+    # link lives outside the scanned scope (nlink > links_found), so it is
+    # overridden to linked_externally.
+    f = TorrentFile(index=0, path="torrents/ext.mkv", size=100)
+    t = torrent([f], hash="ext", ratio=5.0)
+    result = run([rec("torrents/ext.mkv", st_ino=400, nlink=2)], [t])
+    blob = blob_by_ino(result, 400)
+    assert blob.seeding_met is True
+    assert blob.links_outside_scope is True
+    assert blob.status is Blob.Status.LINKED_EXTERNALLY
+
+
+def test_linked_externally_untracked_outside_scope():
+    # Untracked loose blob that would be reclaimable, but has links outside scope
+    result = run([rec("random/loose.mkv", st_ino=401, nlink=2)])
+    blob = blob_by_ino(result, 401)
+    assert blob.torrent_tracked is False
+    assert blob.links_outside_scope is True
+    assert blob.status is Blob.Status.LINKED_EXTERNALLY
+
+
+def test_reclaimable_when_all_links_in_scope():
+    # The same shape with all links in scope (nlink == links_found) stays
+    # reclaimable: the override only fires for outside-scope blobs.
+    f = TorrentFile(index=0, path="torrents/in.mkv", size=100)
+    t = torrent([f], hash="in", ratio=5.0)
+    result = run([rec("torrents/in.mkv", st_ino=402, nlink=1)], [t])
+    blob = blob_by_ino(result, 402)
+    assert blob.links_outside_scope is False
+    assert blob.status is Blob.Status.RECLAIMABLE
+
+
+def test_no_reclaimable_blob_has_links_outside_scope():
+    # A reclaimable blob never has outside-scope links
+    records = [
+        rec("random/a.mkv", st_ino=403, nlink=1),
+        rec("random/b.mkv", st_ino=404, nlink=2),
+        rec("media/movies/keep.mkv", st_ino=405, nlink=2),
+    ]
+    result = run(records)
+    for blob in result.blobs:
+        if blob.status is Blob.Status.RECLAIMABLE:
+            assert blob.links_outside_scope is False
+
+
+def test_partial_torrent_reclaimable_and_linked_externally_mix():
+    # A torrent owns one reclaimable blob and one outside-scope blob (now
+    # linked_externally). The two statuses differ, so the torrent is partial.
+    f_recl = TorrentFile(index=0, path="torrents/pack/in.mkv", size=100)
+    f_ext = TorrentFile(index=1, path="torrents/pack/out.mkv", size=100)
+    records = [
+        rec("torrents/pack/in.mkv", st_ino=410, nlink=1),
+        rec("torrents/pack/out.mkv", st_ino=411, nlink=2),
+    ]
+    t = torrent([f_recl, f_ext], hash="pack", ratio=5.0)
+    result = run(records, [t])
+    in_scope = blob_by_ino(result, 410)
+    ext = blob_by_ino(result, 411)
+    assert in_scope.status is Blob.Status.RECLAIMABLE
+    assert ext.status is Blob.Status.LINKED_EXTERNALLY
+    assert in_scope.partial_torrent is True
+    assert ext.partial_torrent is True
+    assert result.torrents[0].partial_torrent is True
+
+
+def test_linked_externally_override_is_per_blob_for_sidecars():
+    # The override is based on a blob's own links_outside_scope. A reclaimable media
+    # blob with a link outside scope becomes linked_externally, while a colocated
+    # sidecar whose own links are fully in scope inherits the media's pre-override
+    # reclaimable status and stays reclaimable.
+    records = [
+        rec("loose/dir/film.mkv", st_ino=420, nlink=2),
+        rec("loose/dir/film.srt", st_ino=421, nlink=1),
+    ]
+    result = run(records)
+    media = blob_by_ino(result, 420)
+    sidecar = blob_by_ino(result, 421)
+    assert media.kind is Kind.MEDIA
+    assert media.links_outside_scope is True
+    assert media.status is Blob.Status.LINKED_EXTERNALLY
+    assert sidecar.kind is Kind.SIDECAR
+    assert sidecar.links_outside_scope is False
+    assert sidecar.status is Blob.Status.RECLAIMABLE
+    assert sidecar.orphan_reason == ""
 
 
 # --- partial_torrent ---------------------------------------------------------
@@ -645,14 +738,15 @@ def test_reclaim_if_removed_excludes_cross_seed():
 
 
 def test_reclaim_if_removed_excludes_links_outside_scope():
-    # The torrent's blob is reclaimable but has a link outside the scanned tree
-    # (nlink > links_found), so removing what we see frees nothing.
+    # The torrent's blob would be reclaimable but has a link outside the scanned
+    # tree (nlink > links_found), so it is overridden to linked_externally and
+    # removing what we see frees nothing.
     f = TorrentFile(index=0, path="torrents/out.mkv", size=500)
     records = [rec("torrents/out.mkv", st_ino=330, size=500, nlink=3)]
     t = torrent([f], hash="out", ratio=5.0)
     result = run(records, [t])
     blob = blob_by_ino(result, 330)
-    assert blob.status is Blob.Status.RECLAIMABLE
+    assert blob.status is Blob.Status.LINKED_EXTERNALLY
     assert blob.links_outside_scope is True
     assert result.torrents[0].bytes_reclaimable_if_removed == 0
 

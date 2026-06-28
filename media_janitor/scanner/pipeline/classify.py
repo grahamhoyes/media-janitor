@@ -25,7 +25,7 @@ class BlobFlags:
     "Link count could not be accounted for by only files in the scan"
 
 
-def classify_status(
+def provisionally_classify_status(
     *,
     link_trees: tuple[Tree, ...],
     torrent_states: tuple[TorrentState, ...],
@@ -33,7 +33,14 @@ def classify_status(
     in_quarantine: bool,
 ) -> Blob.Status:
     """
-    Classify a blob into a single status
+    Provisionally classify a blob into a single status
+
+    This is the best classification we can make given facts about just this blob.
+    `build.py` may overwrite this based on facts about colocated blobs (eg for sidecar files).
+
+    Note: We don't classify Blob.Status.LINKED_EXTERNALLY here due to potential issues
+    with sidecar binding in build.py (a sidecar should not inherit LINKED_EXTERNALLY from
+    a media file). LINKED_EXTERNALLY is added as a final override in build.py.
 
     :param link_trees: The Tree of each link (one entry per link, duplicates expected)
     :param torrent_states: State of each owning torrent (empty when untracked)

@@ -6,7 +6,7 @@ from pathlib import PurePosixPath
 from scanner.clients.base import TorrentSnapshot, TorrentState
 from scanner.models import Blob, Kind, Tree
 from scanner.paths import kind_for, tree_for
-from scanner.pipeline.classify import classify_status, compute_flags
+from scanner.pipeline.classify import compute_flags, provisionally_classify_status
 from scanner.pipeline.seeding import SeedingReqs, evaluate_seeding
 from scanner.pipeline.walk import FileRecord
 
@@ -266,7 +266,7 @@ def build_scan_model(
         # else the torrent is untracked - seeding_met None, datetimes None (already defaulted)
 
         in_quarantine = any(now - link.mtime < quarantine_window for link in blob.links)
-        blob.status = classify_status(
+        blob.status = provisionally_classify_status(
             link_trees=tuple(link.tree for link in blob.links),
             torrent_states=tuple(t.normalized_state for t in blob.owner_torrents),
             seeding_met=blob.seeding_met,
@@ -307,16 +307,9 @@ def build_scan_model(
         # Take the status from any of its colocated files, preferring kept statuses
         blob.status = kept[0].status if kept else colocated[0].status
 
-    # partial_torrent: a torrent is partial when its owned blobs do not all share
-    # the same status. Statuses are now final (including sidecars), so mark every
-    # owned blob and the torrent itself accordingly.
-    for td in torrent_data:
-        if len({b.status for b in td.owned_blobs}) > 1:
-            td.partial_torrent = True
-            for b in td.owned_blobs:
-                b.partial_torrent = True
-
-    # Compute flags
+    # Compute flags. This depends only on trees, torrent states, nlink, and
+    # links_found, so it runs before the status override (which keys on
+    # links_outside_scope) and before partial_torrent (which keys on status).
     for blob in blobs:
         flags = compute_flags(
             link_trees=tuple(link.tree for link in blob.links),
@@ -329,6 +322,33 @@ def build_scan_model(
         blob.seedable_idle = flags.seedable_idle
         blob.links_outside_scope = flags.links_outside_scope
 
+    # linked_externally override: a blob that would otherwise be reclaimable but
+    # has hard links outside the scanned scope frees no space when its visible
+    # links are deleted.
+    #
+    # This needs to be located exactly here:
+    #   - After sidecar binding, so that a sidecar can't inherit linked_externally
+    #     from a colocated media file (note that provisionally_classify_status won't
+    #     return linked_externally)
+    #   - After compute_flags, so we have links_outside_scope
+    #   - Before partial_torrent, so a torrent split between reclaimable and
+    #     linked_externally is marked partial
+    #
+    # This establishes the invariant that no RECLAIMABLE blob has links_outside_scope set.
+    for blob in blobs:
+        if blob.status is Blob.Status.RECLAIMABLE and blob.links_outside_scope:
+            blob.status = Blob.Status.LINKED_EXTERNALLY
+
+    # partial_torrent: a torrent is partial when its owned blobs do not all share
+    # the same status. Statuses are now final (including sidecars and the
+    # linked_externally override), so mark every owned blob and the torrent itself
+    # accordingly.
+    for td in torrent_data:
+        if len({b.status for b in td.owned_blobs}) > 1:
+            td.partial_torrent = True
+            for b in td.owned_blobs:
+                b.partial_torrent = True
+
     # bytes_reclaimable_if_removed: bytes freed if this whole torrent is removed.
     # Removing a torrent deletes only the paths it references, so a blob is freed
     # only when every hardlink to its inode is a path this torrent owns; otherwise
@@ -336,8 +356,7 @@ def build_scan_model(
     # copy, a cross-seed, or an unreferenced torrents path) and frees nothing.
     #
     # Sum the size of owned, reclaimable blobs whose owned-link count equals nlink.
-    # This subsumes the cross_seed and links_outside_scope cases: both leave at least
-    # one link unowned.
+    # This accounts for the cross_seed case (it leaves at least one link unowned).
     #
     # Example: a 10-file season pack with 6 episodes still hardlinked into the library
     # and 4 orphaned reclaims only the 4.
@@ -397,8 +416,8 @@ def _summary_totals(blobs: list[BlobDraft]) -> dict:
     Reclaimable bytes sum the size of RECLAIMABLE blobs, excluding any whose
     links_outside_scope is True (deleting our links would not free space while
     other hardlinks live outside the scan). by_status lists every Blob.Status
-    (all four are always present, with zeros when absent) keyed by its value
-    string. stat_errors are intentionally not included: they live on WalkResult.
+    (all are always present, with zeros when absent) keyed by its value string.
+    stat_errors are intentionally not included: they live on WalkResult.
     """
     by_status: dict[str, dict[str, int]] = {
         status.value: {"count": 0, "bytes": 0} for status in Blob.Status
@@ -408,6 +427,9 @@ def _summary_totals(blobs: list[BlobDraft]) -> dict:
         bucket = by_status[blob.status.value]
         bucket["count"] += 1
         bucket["bytes"] += blob.size
+        # The not-links_outside_scope guard is now redundant: such blobs carry the
+        # linked_externally status and never match the RECLAIMABLE check. Kept for
+        # clarity; a later stage will simplify it.
         if blob.status is Blob.Status.RECLAIMABLE and not blob.links_outside_scope:
             reclaimable_bytes += blob.size
 

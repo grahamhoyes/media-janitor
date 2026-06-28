@@ -152,6 +152,11 @@ class Blob(models.Model):
         The blob is safe to delete because it has no library link, and is either
         not part of a torrent or its torrents have met their seeding requirements.
         """
+        LINKED_EXTERNALLY = "linked_externally"
+        """
+        The blob would otherwise be reclaimable, but has hard links outside the
+        scan scope, so deleting the links we can see frees no space.
+        """
         SEEDING_HOLD = "seeding_hold"
         """
         The blob has no library link, but cannot be deleted because seeding
@@ -178,7 +183,7 @@ class Blob(models.Model):
         help_text="Number of hard links found during the scan. "
         "May be < nlink if some links are outside of the scanned tree."
     )
-    status = models.CharField(choices=Status, max_length=16)
+    status = models.CharField(choices=Status, max_length=20)
     kind = models.CharField(choices=Kind, max_length=16)
     trees = models.JSONField[list[str], list[str]](
         default=list, help_text="Subset of Tree values this blob is reachable through"

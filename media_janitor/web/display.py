@@ -7,9 +7,10 @@ from scanner.models import Blob, Scan
 
 # Blab.Status display label and classes.
 # The next line is a hack to make sure tailwind picks up these class names.
-# class="badge-success badge-warning badge-info badge-neutral"
+# class="badge-success badge-secondary badge-warning badge-info badge-neutral"
 STATUS_VOCAB: dict[str, dict[str, str]] = {
     Blob.Status.RECLAIMABLE: {"label": "Reclaimable", "badge": "badge-success"},
+    Blob.Status.LINKED_EXTERNALLY: {"label": "Linked externally", "badge": "badge-secondary"},
     Blob.Status.SEEDING_HOLD: {"label": "Seeding hold", "badge": "badge-warning"},
     Blob.Status.IN_LIBRARY: {"label": "In library", "badge": "badge-info"},
     Blob.Status.IN_PROGRESS: {"label": "In progress", "badge": "badge-neutral"},
@@ -18,9 +19,10 @@ STATUS_VOCAB: dict[str, dict[str, str]] = {
 
 # Background color class per Blob.Status, used by the headline band.
 # The next line makes sure tailwind picks up these class names.
-# class="bg-success bg-warning bg-info bg-neutral"
+# class="bg-success bg-secondary bg-warning bg-info bg-neutral"
 STATUS_BAR_CLASS: dict[str, str] = {
     Blob.Status.RECLAIMABLE: "bg-success",
+    Blob.Status.LINKED_EXTERNALLY: "bg-secondary",
     Blob.Status.SEEDING_HOLD: "bg-warning",
     Blob.Status.IN_LIBRARY: "bg-info",
     Blob.Status.IN_PROGRESS: "bg-neutral",
@@ -139,10 +141,10 @@ def headline_segments(scan: Scan) -> list[HeadlineSegment]:
     | Reclaimable  | Seeding Hold |           In Library            | In Progress  |
     +--------------+--------------+---------------------------------+--------------+
 
-    Each segment covers one Blob.Status, in vocabulary order (reclaimable, seeding_hold,
-    in_library, in_progress), sized by that status's total bytes in the scan. Percentages
-    are whole numbers of the total bytes across all statuses. Zero total yields 0 percent
-    everywhere (no division by zero).
+    Each segment covers one Blob.Status, in vocabulary order (reclaimable,
+    linked_externally, seeding_hold, in_library, in_progress), sized by that status's
+    total bytes in the scan. Percentages are whole numbers of the total bytes across all
+    statuses. Zero total yields 0 percent everywhere (no division by zero).
 
     :param scan: the scan whose summary_totals drive the segments
     """

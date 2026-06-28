@@ -14,7 +14,7 @@
   <tbody>
     {% for row in breakdown %}
       <tr>
-        <td><span class="badge {{ row.badge }}">{{ row.label }}</span></td>
+        <td>{% include "media_janitor/fragments/status_badge.html" with badge=row.badge label=row.label %}</td>
         <td class="text-right font-mono">{{ row.count }}</td>
         <td class="text-right font-mono">{{ row.bytes|binsize }}</td>
       </tr>

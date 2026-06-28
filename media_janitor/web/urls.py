@@ -6,5 +6,6 @@ from . import views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+    path("reclaim/", views.reclaim_list, name="reclaim"),
     path("_ping/", views.ping, name="ping"),
 ]

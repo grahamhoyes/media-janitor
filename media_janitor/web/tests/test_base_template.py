@@ -93,8 +93,7 @@ def test_dashboard_renders_navbar_band_and_stamp(logged_in_client):
 
     content = response.content.decode()
     assert "Dashboard" in content
-    assert "Reclaim summary" in content
-    assert "Reclaim list" in content
+    assert "Reclaim" in content
     # Reclaimable amount (binsize of 6000)
     assert "5.9 KiB" in content
     assert "Last scan" in content

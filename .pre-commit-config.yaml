@@ -15,7 +15,7 @@ repos:
       - id: trailing-whitespace
 
   - repo: https://github.com/grahamhoyes/pre-commit-forbid-ai-writing
-    rev: "0.1"
+    rev: v0.2
     hooks:
       - id: forbid-special-characters
 

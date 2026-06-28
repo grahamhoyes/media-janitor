@@ -43,10 +43,7 @@
           <nav class="navbar-center hidden md:flex">
             <ul class="menu menu-horizontal menu-sm px-1 gap-0.5">
               <li><a href="{% url 'dashboard' %}">Dashboard</a></li>
-              {# TODO: Link to reclaim summary page #}
-              <li><a href="#">Reclaim summary</a></li>
-              {# TODO: Link to reclaim list page #}
-              <li><a href="#">Reclaim list</a></li>
+              <li><a href="{% url 'reclaim' %}">Reclaim</a></li>
             </ul>
           </nav>
         {% endif %}
@@ -85,7 +82,7 @@
         {% headline_band current_scan %}
       {% endif %}
 
-      <main class="max-w-7xl mx-auto px-4 py-6">
+      <main class="{% block main_class %}max-w-7xl mx-auto{% endblock main_class %} px-4 py-6">
         {% block content %}
         {% endblock content %}
       </main>

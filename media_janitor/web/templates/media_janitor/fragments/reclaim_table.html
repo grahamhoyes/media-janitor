@@ -1,0 +1,87 @@
+{% load janitor %}
+{% comment %}
+  Reclaim list table with pagination. Rendered standalone on an HTMX request and embedded
+  in reclaim.html on a full page load, so it must carry no page chrome.
+
+  Context: page_obj, paginator, page_size, start_index, end_index, total_count.
+{% endcomment %}
+<div class="overflow-x-auto">
+  <table class="table table-xs w-full table-fixed min-w-175">
+    <thead>
+      <tr class="bg-base-200/50 text-xs">
+        <th class="w-34">Status</th>
+        <th>Name / Path</th>
+        <th class="w-32">Flags</th>
+        <th class="w-18">Kind</th>
+        <th class="w-22">Size</th>
+        <th class="w-22 text-nowrap">Seeding met?</th>
+        {# Action column #}
+        <th class="w-10"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for blob in page_obj %}
+        <tr class="hover:bg-base-200/50 transition-colors">
+          {# Status #}
+          <td>{% status_badge blob %}</td>
+          {# Name / path #}
+          <td class="min-w-0 overflow-hidden">
+            {% if blob.display_link %}
+              <div class="font-mono text-xs truncate leading-tight">
+                <span class="font-semibold">{{ blob.display_link.name }}</span>
+                {% if blob.extra_link_count > 0 %}
+                  <span class="text-base-content/40">+{{ blob.extra_link_count }} more</span>
+                {% endif %}
+              </div>
+              <div class="text-xs text-base-content/40 font-mono truncate leading-tight mt-0.5"
+                   title="{{ blob.display_link.path }}">{{ blob.display_link.path }}</div>
+            {% else %}
+              <div class="text-base-content/40">-</div>
+            {% endif %}
+          </td>
+          {# Flags #}
+          <td>
+            <div class="flex flex-wrap gap-1">
+              {% for label, tooltip in blob|active_flags %}
+                <span class="badge badge-outline badge-xs cursor-help"
+                      title="{{ tooltip }}">{{ label }}</span>
+              {% endfor %}
+            </div>
+          </td>
+          {# Kind #}
+          <td class="text-base-content/50">{{ blob.get_kind_display }}</td>
+          {# Size #}
+          <td class="text-right font-mono whitespace-nowrap">
+            {{ blob.size|binsize }}
+            {% if blob.links_outside_scope %}<span class="text-base-content/40">*</span>{% endif %}
+          </td>
+          {# Seeding requirements met #}
+          <td class="whitespace-nowrap">
+            {% if blob.seeding_met %}
+              <span class="badge badge-success badge-xs">Yes</span>
+            {% elif blob.seeding_end %}
+              <span class="badge badge-warning badge-xs"
+                    title="{{ blob.seeding_end|date:"DATETIME_FORMAT" }}">{{ blob.seeding_end|date:"DATE_FORMAT" }}</span>
+            {% elif not blob.torrent_tracked %}
+              <span class="badge badge-secondary badge-xs">No torrent</span>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          {# Actions TODO: per-row select / add to bin controls #}
+          <td></td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="7" class="text-center text-base-content/60 py-6">This scan has no blobs.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if page_obj.paginator.count %}
+  <div class="flex items-baseline justify-between gap-4 px-4 py-2 border-t border-base-300">
+    {% pagination_controls page_obj %}
+  </div>
+{% endif %}

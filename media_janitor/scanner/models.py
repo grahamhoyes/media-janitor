@@ -228,6 +228,7 @@ class Blob(models.Model):
         default=False,
         help_text="A torrent linked to this blob has blobs that do not all share the same status",
     )
+    # TODO: Rename to could_seed (already reflected in web/display.py)
     seedable_idle = models.BooleanField(
         default=False,
         help_text="In the library and torrent trees, but isn't seeding. "

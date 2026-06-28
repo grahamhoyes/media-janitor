@@ -1,4 +1,7 @@
 from django import template
+from django.core.paginator import Page
+from django.template import Context
+from django.urls import reverse
 
 from scanner.models import Blob, Scan
 from web import display
@@ -67,4 +70,38 @@ def headline_band(scan: Scan) -> dict[str, object]:
     return {
         "reclaimable_bytes": scan.reclaimable_bytes,
         "segments": display.headline_segments(scan),
+    }
+
+
+@register.inclusion_tag("media_janitor/fragments/pagination_controls.html", takes_context=True)
+def pagination_controls(
+    context: Context,
+    page: Page,
+    page_param="page",
+    size_param="page_size",
+    route_name: str | None = None,
+) -> dict:
+    """
+    Render pagination controls
+
+    :param context: Request context, automatically inserted
+    :param page: Page object
+    :param page_param: Optional, URL query param containing the page number
+    :param size_param: Optional, URL query param containing the page size
+    :param route_name: Optional, URL route name. Defaults to the request URL.
+    """
+    request = context["request"]
+
+    if route_name:
+        url = reverse(route_name)
+    else:
+        url = request.path
+
+    return {
+        "page": page,
+        "page_size": request.GET.get(size_param),
+        "page_param": page_param,
+        "size_param": size_param,
+        "page_range": page.paginator.get_elided_page_range(page.number, on_each_side=2, on_ends=1),
+        "url": url,
     }

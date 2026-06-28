@@ -1,0 +1,31 @@
+{# allow-special-characters-file #}
+<span class="text-xs text-base-content/60">Showing {{ page.start_index }} to {{ page.end_index }} of {{ page.paginator.count }}</span>
+
+<div class="join">
+  {% if page.has_previous %}
+    <a class="join-item btn btn-sm pb-0.5"
+       href="{{ url }}?{{ page_param }}={{ page.previous_page_number }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">‹</a>
+  {% else %}
+    <button class="join-item btn btn-sm pb-0.5 btn-disabled">‹</button>
+  {% endif %}
+
+  {% for i in page_range %}
+    {% if i == page.paginator.ELLIPSIS %}
+      <a class="join-item btn btn-sm btn-disabled px-1"
+         href="{{ url }}?{{ page_param }}={{ i }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">{{ i }}</a>
+    {% elif i == page.number %}
+      <a class="join-item btn btn-sm btn-active"
+         href="{{ url }}?{{ page_param }}={{ i }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">{{ i }}</a>
+    {% else %}
+      <a class="join-item btn btn-sm"
+         href="{{ url }}?{{ page_param }}={{ i }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">{{ i }}</a>
+    {% endif %}
+  {% endfor %}
+
+  {% if page.has_next %}
+    <a class="join-item btn btn-sm pb-0.5"
+       href="{{ url }}?{{ page_param }}={{ page.next_page_number }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">›</a>
+  {% else %}
+    <button class="join-item btn btn-sm pb-0.5 btn-disabled">›</button>
+  {% endif %}
+</div>

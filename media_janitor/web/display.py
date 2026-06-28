@@ -34,27 +34,27 @@ STATUS_BAR_CLASS: dict[str, str] = {
 FLAG_VOCAB: list[tuple[str, str, str]] = [
     (
         "cross_seed",
-        "cross-seed",
+        "Cross seed",
         "Served by more than one torrent",
     ),
     (
         "multi_link",
-        "multi-link",
+        "Multi link",
         "Has more than one hard link in the same tree",
     ),
     (
         "partial_torrent",
-        "partial-torrent",
+        "Partial torrent",
         "Owning torrent has blobs of mixed status",
     ),
     (
         "seedable_idle",
-        "seedable-idle",
+        "Could seed",
         "In library and torrents trees but not seeding",
     ),
     (
         "links_outside_scope",
-        "outside-scope",
+        "Outside scope",
         "Has links outside the scanned directories",
     ),
 ]

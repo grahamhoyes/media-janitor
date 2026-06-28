@@ -64,6 +64,6 @@ def headline_band(scan: Scan) -> dict[str, object]:
     :param scan: the current scan to summarize
     """
     return {
-        "reclaimable_bytes": (scan.summary_totals or {}).get("reclaimable_bytes", 0),
+        "reclaimable_bytes": scan.reclaimable_bytes,
         "segments": display.headline_segments(scan),
     }

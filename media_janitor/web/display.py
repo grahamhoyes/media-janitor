@@ -146,10 +146,10 @@ def headline_segments(scan: Scan) -> list[HeadlineSegment]:
     total bytes in the scan. Percentages are whole numbers of the total bytes across all
     statuses. Zero total yields 0 percent everywhere (no division by zero).
 
-    :param scan: the scan whose summary_totals drive the segments
+    :param scan: the scan whose status_totals drive the segments
     """
-    by_status = (scan.summary_totals or {}).get("by_status", {})
-    totals = {key: (by_status.get(key) or {}).get("bytes", 0) for key in STATUS_VOCAB}
+    status_totals = scan.status_totals or {}
+    totals = {key: (status_totals.get(key) or {}).get("bytes", 0) for key in STATUS_VOCAB}
     grand_total = sum(totals.values())
 
     segments: list[HeadlineSegment] = []

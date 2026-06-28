@@ -116,7 +116,7 @@ class ScanModel:
     blobs: list[BlobDraft]
     torrents: list[TorrentDraft]
     blob_torrents: list[BlobTorrentDraft]
-    summary_totals: dict = field(default_factory=dict)
+    status_totals: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 def _blob_kind(links: list[LinkDraft]) -> Kind:
@@ -382,13 +382,13 @@ def build_scan_model(
                 total += blob.size
         td.bytes_reclaimable_if_removed = total
 
-    summary_totals = _summary_totals(blobs)
+    status_totals = _compute_totals(blobs)
 
     return ScanModel(
         blobs=blobs,
         torrents=torrent_data,
         blob_torrents=blob_torrents,
-        summary_totals=summary_totals,
+        status_totals=status_totals,
     )
 
 
@@ -409,31 +409,21 @@ def _link_for(
     )
 
 
-def _summary_totals(blobs: list[BlobDraft]) -> dict:
+def _compute_totals(blobs: list[BlobDraft]) -> dict[str, dict[str, int]]:
     """
-    Build the scan summary totals
+    Build the per-status scan byte and count totals
 
-    Reclaimable bytes sum the size of RECLAIMABLE blobs, excluding any whose
-    links_outside_scope is True (deleting our links would not free space while
-    other hardlinks live outside the scan). by_status lists every Blob.Status
-    (all are always present, with zeros when absent) keyed by its value string.
+    The returned status_totals lists every Blob.Status (all are always present,
+    with zeros when absent) keyed by its value string.
+
     stat_errors are intentionally not included: they live on WalkResult.
     """
-    by_status: dict[str, dict[str, int]] = {
+    status_totals: dict[str, dict[str, int]] = {
         status.value: {"count": 0, "bytes": 0} for status in Blob.Status
     }
-    reclaimable_bytes = 0
     for blob in blobs:
-        bucket = by_status[blob.status.value]
+        bucket = status_totals[blob.status.value]
         bucket["count"] += 1
         bucket["bytes"] += blob.size
-        # The not-links_outside_scope guard is now redundant: such blobs carry the
-        # linked_externally status and never match the RECLAIMABLE check. Kept for
-        # clarity; a later stage will simplify it.
-        if blob.status is Blob.Status.RECLAIMABLE and not blob.links_outside_scope:
-            reclaimable_bytes += blob.size
 
-    return {
-        "reclaimable_bytes": reclaimable_bytes,
-        "by_status": by_status,
-    }
+    return status_totals

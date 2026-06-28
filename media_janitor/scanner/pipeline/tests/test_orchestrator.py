@@ -111,7 +111,7 @@ def test_publishes_complete_snapshot_with_reclaimable_totals(tmp_path):
 
     # foo.mkv is hard-linked into the library and torrent-tracked: in_library, kept.
     # orphan.mkv is loose and untracked: reclaimable.
-    assert scan.summary_totals["reclaimable_bytes"] == len(LOOSE_CONTENT)
+    assert scan.reclaimable_bytes == len(LOOSE_CONTENT)
 
     # Two unique inodes -> two blobs (foo.mkv collapsed across its two links).
     assert Blob.objects.filter(scan=scan).count() == 2

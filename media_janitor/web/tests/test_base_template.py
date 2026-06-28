@@ -37,24 +37,22 @@ def test_headline_segments_ordering_labels_and_pcts():
     assert sum(x["pct"] for x in by_key.values()) == pytest.approx(100, abs=0.02)
 
     assert by_key["reclaimable"]["bytes"] == 6000
-    assert by_key["linked_externally"]["bytes"] == 0
-    assert by_key["linked_externally"]["pct"] == 0
+    assert by_key["linked_externally"]["bytes"] == 3000
+    assert by_key["linked_externally"]["pct"] > 0
 
     assert by_key["reclaimable"]["bar_class"] == "bg-success"
     assert by_key["seeding_hold"]["dot_class"] == "bg-warning"
 
 
 def test_headline_segments_zero_total_no_division_error():
-    # Constructed in memory (no DB) since headline_segments only reads summary_totals.
+    # Constructed in memory (no DB) since headline_segments only reads status_totals
     scan = Scan(
-        summary_totals={
-            "reclaimable_bytes": 0,
-            "by_status": {
-                "reclaimable": {"count": 0, "bytes": 0},
-                "seeding_hold": {"count": 0, "bytes": 0},
-                "in_library": {"count": 0, "bytes": 0},
-                "in_progress": {"count": 0, "bytes": 0},
-            },
+        status_totals={
+            "reclaimable": {"count": 0, "bytes": 0},
+            "linked_externally": {"count": 0, "bytes": 0},
+            "seeding_hold": {"count": 0, "bytes": 0},
+            "in_library": {"count": 0, "bytes": 0},
+            "in_progress": {"count": 0, "bytes": 0},
         }
     )
     segments = headline_segments(scan)
@@ -69,8 +67,8 @@ def test_headline_segments_zero_total_no_division_error():
     assert all(seg["bytes"] == 0 for seg in segments)
 
 
-def test_headline_segments_empty_summary_totals():
-    scan = Scan(summary_totals={})
+def test_headline_segments_empty_status_totals():
+    scan = Scan(status_totals={})
     segments = headline_segments(scan)
     assert len(segments) == 5
     assert all(seg["pct"] == 0 for seg in segments)
@@ -97,8 +95,8 @@ def test_dashboard_renders_navbar_band_and_stamp(logged_in_client):
     assert "Dashboard" in content
     assert "Reclaim summary" in content
     assert "Reclaim list" in content
-    # Reclaimable amount (binsize of 5000)
-    assert "4.9 KiB" in content
+    # Reclaimable amount (binsize of 6000)
+    assert "5.9 KiB" in content
     assert "Last scan" in content
 
 
@@ -128,5 +126,5 @@ def test_login_page_hides_scan_data_from_anonymous(client):
     content = response.content.decode()
     assert "Sign in" in content
     assert "Last scan" not in content
-    # Headline band absent: its reclaimable figure (binsize of 5000) does not render.
-    assert "4.9 KiB" not in content
+    # Headline band absent: its reclaimable figure (binsize of 6000) does not render
+    assert "5.9 KiB" not in content

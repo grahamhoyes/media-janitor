@@ -320,15 +320,15 @@ def test_links_outside_scope_excluded_from_reclaim():
     blob = result.blobs[0]
     assert blob.links_outside_scope is True
     assert blob.status is Blob.Status.LINKED_EXTERNALLY
-    assert result.summary_totals["reclaimable_bytes"] == 0
+    assert result.status_totals[Blob.Status.RECLAIMABLE.value]["bytes"] == 0
     # No reclaimable blob remains, and it lands in the linked_externally bucket.
-    assert result.summary_totals["by_status"][Blob.Status.RECLAIMABLE.value]["count"] == 0
-    assert result.summary_totals["by_status"][Blob.Status.LINKED_EXTERNALLY.value]["count"] == 1
+    assert result.status_totals[Blob.Status.RECLAIMABLE.value]["count"] == 0
+    assert result.status_totals[Blob.Status.LINKED_EXTERNALLY.value]["count"] == 1
 
 
 def test_reclaimable_within_scope_counted():
     result = run([rec("random/loose.mkv", st_ino=91, size=500, nlink=1)])
-    assert result.summary_totals["reclaimable_bytes"] == 500
+    assert result.status_totals[Blob.Status.RECLAIMABLE.value]["bytes"] == 500
 
 
 @pytest.mark.parametrize(
@@ -553,7 +553,7 @@ def test_release_torrent_with_sample_subfolder_and_sidecar():
 
     # The whole Sample/ subfolder frees space (sample + two thumbnails); the kept
     # main and its bound sidecars do not
-    assert result.summary_totals["reclaimable_bytes"] == 121 + 10 + 10
+    assert result.status_totals[Blob.Status.RECLAIMABLE.value]["bytes"] == 121 + 10 + 10
 
 
 # --- Sidecar binding ---------------------------------------------------------
@@ -789,19 +789,17 @@ def test_reclaim_if_removed_excludes_unreferenced_torrents_hardlink():
     assert result.torrents[0].bytes_reclaimable_if_removed == 0
 
 
-# --- summary_totals ----------------------------------------------------------
+# --- totals ------------------------------------------------------------------
 
 
-def test_summary_totals_shape_and_all_statuses_present():
+def test_status_totals_shape_and_all_statuses_present():
     result = run([rec("media/movies/a.mkv", st_ino=160)])
-    totals = result.summary_totals
-    assert set(totals) == {"reclaimable_bytes", "by_status"}
-    assert set(totals["by_status"]) == {s.value for s in Blob.Status}
-    for bucket in totals["by_status"].values():
+    assert set(result.status_totals) == {s.value for s in Blob.Status}
+    for bucket in result.status_totals.values():
         assert set(bucket) == {"count", "bytes"}
 
 
-def test_summary_totals_aggregates():
+def test_status_totals_aggregates():
     result = run(
         [
             rec("media/movies/keep.mkv", st_ino=170, size=10),
@@ -809,7 +807,6 @@ def test_summary_totals_aggregates():
             rec("random/loose2.mkv", st_ino=172, size=30),
         ]
     )
-    by = result.summary_totals["by_status"]
+    by = result.status_totals
     assert by[Blob.Status.IN_LIBRARY.value] == {"count": 1, "bytes": 10}
     assert by[Blob.Status.RECLAIMABLE.value] == {"count": 2, "bytes": 50}
-    assert result.summary_totals["reclaimable_bytes"] == 50

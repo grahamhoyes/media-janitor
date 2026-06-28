@@ -18,7 +18,7 @@ def make_scan(status: Scan.Status = Scan.Status.COMPLETE, **kwargs) -> Scan:
     Create a Scan
 
     :param status: lifecycle status, defaults to complete
-    :param kwargs: field overrides (eg as_of, summary_totals)
+    :param kwargs: field overrides (eg as_of, status_totals)
     """
     defaults = {
         "status": status,
@@ -93,14 +93,12 @@ def make_complete_scan() -> Scan:
     Build a complete scan with a few blobs of varying status/kind/flags
     """
     scan = make_scan(
-        summary_totals={
-            "reclaimable_bytes": 5000,
-            "by_status": {
-                "reclaimable": {"count": 1, "bytes": 6000},
-                "seeding_hold": {"count": 1, "bytes": 4000},
-                "in_library": {"count": 1, "bytes": 2000},
-                "in_progress": {"count": 1, "bytes": 1000},
-            },
+        status_totals={
+            "reclaimable": {"count": 1, "bytes": 6000},
+            "linked_externally": {"count": 1, "bytes": 3000},
+            "seeding_hold": {"count": 1, "bytes": 4000},
+            "in_library": {"count": 1, "bytes": 2000},
+            "in_progress": {"count": 1, "bytes": 1000},
         },
     )
 
@@ -113,6 +111,17 @@ def make_complete_scan() -> Scan:
         torrent_tracked=True,
         seeding_met=True,
         cross_seed=True,
+        trees=[Tree.TORRENTS],
+    )
+    linked_externally = make_blob(
+        scan,
+        st_ino=5,
+        size=3000,
+        nlink=2,
+        links_found=1,
+        status=Blob.Status.LINKED_EXTERNALLY,
+        kind=Kind.MEDIA,
+        torrent_tracked=True,
         links_outside_scope=True,
         trees=[Tree.TORRENTS],
     )
@@ -147,6 +156,7 @@ def make_complete_scan() -> Scan:
     )
 
     make_link(reclaimable, "torrents/movies/example.mkv", tree=Tree.TORRENTS)
+    make_link(linked_externally, "torrents/movies/external.mkv", tree=Tree.TORRENTS)
     make_link(seeding_hold, "torrents/tv/show.mkv", tree=Tree.TORRENTS)
     make_link(in_library, "media/movies/example.nfo", tree=Tree.LIBRARY, kind=Kind.SIDECAR)
     make_link(in_progress, "loose/incoming.part", tree=Tree.LOOSE, kind=Kind.OTHER)

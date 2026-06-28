@@ -250,10 +250,10 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
             ]
         )
 
-        scan.summary_totals = result.summary_totals
+        scan.status_totals = result.status_totals
         scan.qbittorrent_version = snapshot.server_version
         scan.status = Scan.Status.COMPLETE
-        scan.save(update_fields=["summary_totals", "qbittorrent_version", "status"])
+        scan.save(update_fields=["status_totals", "qbittorrent_version", "status"])
 
 
 def _mark_failed(scan: Scan) -> None:

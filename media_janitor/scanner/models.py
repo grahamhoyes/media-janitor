@@ -87,20 +87,16 @@ class Scan(models.Model):
         help_text="qBittorrent application version observed during the scan",
     )
 
-    # TODO: Split reclaimable_bytes into its own field for better type safety.
-    #  mypy doesn't like when we use a TypedDict here.
-    summary_totals = models.JSONField[dict, dict](
-        default=dict, help_text="Computed totals: reclaimable totals plus per-status breakdown"
+    status_totals = models.JSONField[dict, dict](
+        default=dict,
+        help_text="Per-status count and byte totals, keyed by Blob.Status value",
     )
     """
     Format:
     {
-        "reclaimable_bytes": int,
-        "by_status": {
-            [Blob.Status]: {
-              "count": int,
-              "bytes": int,
-            }
+        [Blob.Status]: {
+            "count": int,
+            "bytes": int,
         }
     }
     """
@@ -110,6 +106,11 @@ class Scan(models.Model):
 
     def __str__(self) -> str:
         return f"Scan {self.pk} ({self.status})"
+
+    @property
+    def reclaimable_bytes(self) -> int:
+        """Bytes freed by deleting all reclaimable-status blobs"""
+        return (self.status_totals or {}).get(Blob.Status.RECLAIMABLE.value, {}).get("bytes", 0)
 
     @classmethod
     def current(cls) -> Scan | None:

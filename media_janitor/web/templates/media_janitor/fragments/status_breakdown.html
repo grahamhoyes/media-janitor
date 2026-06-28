@@ -1,0 +1,23 @@
+{% load janitor %}
+{% comment %}
+  Per-status breakdown table, requires a `breakdown` context variable
+  (a list of row dicts: key, label, badge, count, bytes).
+{% endcomment %}
+<table class="table table-sm">
+  <thead>
+    <tr>
+      <th>Status</th>
+      <th class="text-right">Blobs</th>
+      <th class="text-right">Size</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in breakdown %}
+      <tr>
+        <td><span class="badge {{ row.badge }}">{{ row.label }}</span></td>
+        <td class="text-right font-mono">{{ row.count }}</td>
+        <td class="text-right font-mono">{{ row.bytes|binsize }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>

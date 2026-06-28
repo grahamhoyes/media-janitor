@@ -1,50 +1,72 @@
 {% extends "media_janitor/base.html" %}
-
-{% comment %}
-  Scaffold placeholder. Confirms the stack is wired:
-  Tailwind + DaisyUI (theme/card/badge), Alpine (toggle), HTMX (partial swap).
-  Real views to follow
-{% endcomment %}
+{% load janitor %}
 
 {% block page_title %}Dashboard{% endblock page_title %}
 
 {% block content %}
-  <div class="card bg-base-100 shadow-md">
-    <div class="card-body gap-4">
-      <div class="flex items-center justify-between">
-        <h1 class="card-title">Media Janitor</h1>
-        <span class="badge badge-success">scaffold</span>
-      </div>
-      <p class="text-base-content/60 text-sm">
-        Logged in as <strong>{{ request.user.username }}</strong>. The stack is wired and ready.
-      </p>
-
-      {# Alpine: client-side toggle #}
-      <div x-data="{ open: false }" class="rounded border border-base-300 p-3">
-        <button class="btn btn-sm btn-primary"
-                @click="open = !open"
-                x-text="open ? 'Hide Alpine panel' : 'Show Alpine panel'">Toggle</button>
-        <p x-show="open"
-           x-cloak
-           x-transition
-           class="mt-2 text-sm text-base-content/70">Alpine.js is working.</p>
-      </div>
-
-      {# HTMX: server partial swap #}
-      <div class="rounded border border-base-300 p-3">
-        <button class="btn btn-sm btn-secondary"
-                hx-get="{% url 'ping' %}"
-                hx-target="#ping-result"
-                hx-swap="innerHTML">Ping server (HTMX)</button>
-        <div id="ping-result" class="mt-2 text-sm text-base-content/70"></div>
+  {% if not current_scan %}
+    {% include "media_janitor/fragments/no_scan.html" %}
+  {% else %}
+    <div class="flex flex-col gap-6">
+      {# TODO: Show change since the last scan? Or 30d change? #}
+      {# Important stats #}
+      <div class="stats stats-vertical sm:stats-horizontal bg-base-100 shadow w-full">
+        <div class="stat">
+          <div class="stat-title">Total content size</div>
+          <div class="stat-value text-2xl">{{ totals.total_bytes|binsize }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Blobs</div>
+          <div class="stat-value text-2xl">{{ totals.total_count }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Reclaimable</div>
+          <div class="stat-value text-2xl text-success">{{ totals.reclaimable_bytes|binsize }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Torrents</div>
+          <div class="stat-value text-2xl">{{ torrent_count }}</div>
+        </div>
       </div>
 
-      <div class="flex justify-end">
-        <form method="post" action="{% url 'logout' %}">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
-        </form>
+      <div class="grid gap-6 lg:grid-cols-3">
+        {# Per-status breakdown #}
+        <div class="card bg-base-100 shadow-md lg:col-span-2">
+          <div class="card-body gap-3">
+            <h2 class="card-title text-base">By status</h2>
+            {% include "media_janitor/fragments/status_breakdown.html" %}
+          </div>
+        </div>
+
+        {# Scan info #}
+        <div class="card bg-base-100 shadow-md">
+          <div class="card-body gap-3">
+            <h2 class="card-title text-base">Scan</h2>
+            <dl class="grid grid-cols-2 gap-y-2 text-sm">
+              <dt class="text-base-content/60">As of</dt>
+              <dd class="text-right font-mono">
+                {{ current_scan.as_of|date:"Y-m-d" }}
+              </dd>
+              <dt class="text-base-content/60">Status</dt>
+              <dd class="text-right">
+                {{ current_scan.get_status_display }}
+              </dd>
+              <dt class="text-base-content/60">qBittorrent</dt>
+              <dd class="text-right font-mono">
+                {{ current_scan.qbittorrent_version|default:"-" }}
+              </dd>
+              <dt class="text-base-content/60">Seeding requirement</dt>
+              <dd class="text-right font-mono">
+                {{ current_scan.seeding_min_days }} days / {{ current_scan.seeding_min_ratio }} ratio
+              </dd>
+              <dt class="text-base-content/60">Quarantine window</dt>
+              <dd class="text-right font-mono">
+                {{ current_scan.quarantine_window|duration }}
+              </dd>
+            </dl>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
+  {% endif %}
 {% endblock content %}

@@ -6,6 +6,7 @@ from django.utils import timezone
 from scanner.models import Blob, Kind
 from web.display import (
     active_flags,
+    duration,
     since,
     status_badge_class,
     status_label,
@@ -36,7 +37,7 @@ def test_binsize(value, expected):
     assert binsize(value) == expected
 
 
-# -- since / until --------------------------------------------------------------
+# -- since / until / duration  --------------------------------------------------
 
 
 def test_since_renders_two_compact_units():
@@ -68,6 +69,11 @@ def test_since_sub_minute_is_zero_minutes():
 def test_since_and_until_none_render_dash():
     assert since(None) == "-"
     assert until(None) == "-"
+
+
+def test_duration():
+    assert duration(timedelta(days=1, hours=2, minutes=30)) == "1d 2h"
+    assert duration(None) == "-"
 
 
 # -- status vocabulary ----------------------------------------------------------

@@ -10,6 +10,7 @@ register = template.Library()
 register.filter("active_flags", display.active_flags)
 register.filter("since", display.since)
 register.filter("until", display.until)
+register.filter("duration", display.duration)
 
 
 # Binary unit suffixes, ordered smallest to largest

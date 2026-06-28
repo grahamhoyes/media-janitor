@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
 from django.utils.timesince import timesince, timeuntil
@@ -120,6 +120,84 @@ def until(value: datetime | None, now: datetime | None = None) -> str:
     if value is None:
         return "-"
     return timeuntil(value, now=now, time_strings=_COMPACT_TIME_STRINGS).replace(", ", " ")
+
+
+def duration(value: timedelta | None) -> str:
+    """
+    Compact duration, for example "3d 4h"
+
+    Renders the two largest non-zero units. Sub-minute durations render as "0m".
+
+    :param value: a timedelta
+    """
+    if value is None:
+        return "-"
+
+    now = datetime.now(UTC)
+    return timeuntil(now + value, now, time_strings=_COMPACT_TIME_STRINGS).replace(", ", " ")
+
+
+class StatusRow(TypedDict):
+    key: str
+    label: str
+    badge: str
+    count: int
+    bytes: int
+
+
+def status_breakdown(scan: Scan) -> list[StatusRow]:
+    """
+    Build the per-status breakdown rows for a scan, in vocabulary order.
+
+    One row per Blob.Status, reading each status's count and bytes from the
+    scan's status_totals. Missing or empty totals default to zero.
+
+    :param scan: the scan whose status_totals drive the rows
+    """
+    status_totals = scan.status_totals or {}
+    rows: list[StatusRow] = []
+    for key, vocab in STATUS_VOCAB.items():
+        entry = status_totals.get(key) or {}
+        rows.append(
+            {
+                "key": key,
+                "label": vocab["label"],
+                "badge": vocab["badge"],
+                "count": entry.get("count", 0),
+                "bytes": entry.get("bytes", 0),
+            }
+        )
+    return rows
+
+
+class DashboardTotals(TypedDict):
+    total_bytes: int
+    total_count: int
+    reclaimable_bytes: int
+
+
+def dashboard_totals(scan: Scan) -> DashboardTotals:
+    """
+    Build the aggregate totals shown on the dashboard stats cards.
+
+    total_bytes and total_count sum across every status in the scan's status_totals.
+    reclaimable_bytes is the scan's reclaimable bucket. Missing or empty totals default
+    to zero.
+
+    :param scan: the scan whose status_totals drive the totals
+    """
+    status_totals = scan.status_totals or {}
+    total_bytes = 0
+    total_count = 0
+    for key in STATUS_VOCAB:
+        entry = status_totals.get(key) or {}
+        total_bytes += entry.get("bytes", 0)
+        total_count += entry.get("count", 0)
+    return {
+        "total_bytes": total_bytes,
+        "total_count": total_count,
+        "reclaimable_bytes": scan.reclaimable_bytes,
+    }
 
 
 class HeadlineSegment(TypedDict):

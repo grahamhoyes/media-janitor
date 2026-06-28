@@ -3,7 +3,7 @@
   Reclaim list table with pagination. Rendered standalone on an HTMX request and embedded
   in reclaim.html on a full page load, so it must carry no page chrome.
 
-  Context: page_obj, paginator, page_size, start_index, end_index, total_count.
+  Context: page_obj, the paginator Page instance
 {% endcomment %}
 <div class="overflow-x-auto">
   <table class="table table-xs w-full table-fixed min-w-175">
@@ -24,21 +24,31 @@
         <tr class="hover:bg-base-200/50 transition-colors">
           {# Status #}
           <td>{% status_badge blob %}</td>
+
           {# Name / path #}
           <td class="min-w-0 overflow-hidden">
-            {% if blob.display_link %}
-              <div class="font-mono text-xs truncate leading-tight">
-                <span class="font-semibold">{{ blob.display_link.name }}</span>
-                {% if blob.extra_link_count > 0 %}
-                  <span class="text-base-content/40">+{{ blob.extra_link_count }} more</span>
-                {% endif %}
-              </div>
-              <div class="text-xs text-base-content/40 font-mono truncate leading-tight mt-0.5"
-                   title="{{ blob.display_link.path }}">{{ blob.display_link.path }}</div>
-            {% else %}
-              <div class="text-base-content/40">-</div>
-            {% endif %}
+            <div x-data="{ expanded: false }">
+              {% for link in blob.sorted_links %}
+                <div {% if not forloop.first %}class="mt-1" x-show="expanded" x-cloak{% endif %}>
+                  <div class="font-mono text-xs truncate leading-tight">
+                    <span class="font-semibold">{{ link.name }}</span>
+
+                    {# Button to expand/hide the rest of the links, on the first item #}
+                    {% if blob.sorted_links|length > 1 and forloop.first %}
+                      <button type="button"
+                              class="text-base-content/70 hover:text-base-content cursor-pointer"
+                              @click="expanded = !expanded"
+                              x-text="!expanded ? '+{{ blob.sorted_links|length|add:"-1" }} more' : 'Show less'">
+                      </button>
+                    {% endif %}
+                  </div>
+                  <div class="text-xs text-base-content/40 font-mono truncate leading-tight mt-0.5"
+                       title="{{ link.path }}">{{ link.path }}</div>
+                </div>
+              {% endfor %}
+            </div>
           </td>
+
           {# Flags #}
           <td>
             <div class="flex flex-wrap gap-1">
@@ -48,13 +58,16 @@
               {% endfor %}
             </div>
           </td>
+
           {# Kind #}
           <td class="text-base-content/50">{{ blob.get_kind_display }}</td>
+
           {# Size #}
           <td class="text-right font-mono whitespace-nowrap">
             {{ blob.size|binsize }}
             {% if blob.links_outside_scope %}<span class="text-base-content/40">*</span>{% endif %}
           </td>
+
           {# Seeding requirements met #}
           <td class="whitespace-nowrap">
             {% if blob.seeding_met %}
@@ -68,6 +81,7 @@
               -
             {% endif %}
           </td>
+
           {# Actions TODO: per-row select / add to bin controls #}
           <td></td>
         </tr>

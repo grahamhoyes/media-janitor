@@ -145,10 +145,8 @@ def test_extra_link_indicator(logged_in_client):
     assert "+1 more" in content
 
     by_size = {blob.size: blob for blob in response.context["page_obj"]}
-    assert by_size[5000].extra_link_count == 1
-    assert by_size[1000].extra_link_count == 0
     # Display link is the lowest path
-    assert by_size[5000].display_link.path == "media/a/one.mkv"
+    assert by_size[5000].sorted_links[0].path == "media/a/one.mkv"
 
 
 @pytest.mark.django_db

@@ -52,8 +52,7 @@ def reclaim_list(request):
         # rendering a row issues no extra queries.
         links = sorted(blob.links.all(), key=lambda link: link.path)
         # Attached for the template only, the model has no such fields
-        blob.display_link = links[0] if links else None  # type: ignore[attr-defined]
-        blob.extra_link_count = max(len(links) - 1, 0)  # type: ignore[attr-defined]
+        blob.sorted_links = links  # type: ignore[attr-defined]
 
     context = {
         "page_obj": page_obj,

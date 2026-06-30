@@ -200,6 +200,31 @@ def dashboard_totals(scan: Scan) -> DashboardTotals:
     }
 
 
+class SortColumn(TypedDict):
+    """
+    The state of a sortable column in a table
+
+    next_sort and next_dir are the sort and dir query params this column's next
+    click should request. Both None means the next click clears the sort, dropping
+    those params from the link (matching Django's querystring semantics, where None
+    removes a param) and returning to the default ordering.
+    """
+
+    dir: str
+    "Current sort direction, or empty string when not sorted on this column."
+    next_sort: str | None
+    """
+    Next field to sort on, or None to stop sorting (removing the param from the link).
+
+    Typically this will be the column in question, unless clearing the sort.
+    """
+    next_dir: str | None
+    """
+    Next direction to sort this column on, or None to clear the sort (removing the
+    param from the link).
+    """
+
+
 class HeadlineSegment(TypedDict):
     key: str
     label: str

@@ -10,7 +10,7 @@
   {% else %}
     <div class="flex flex-col gap-3">
       <h1 class="text-sm font-semibold tracking-tight">Reclaim list</h1>
-      {# TODO: hx-target to swap only the table #}
+      {# Sort, pagination, and filter controls hx-swap the table fragment into this container. #}
       <div id="reclaim-table"
            class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
         {% include "media_janitor/fragments/reclaim_table.html" %}

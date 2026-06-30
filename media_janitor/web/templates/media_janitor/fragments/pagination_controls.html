@@ -1,30 +1,39 @@
 {# allow-special-characters-file #}
+{% comment %}
+  Generic pagination control. Links are always full-GET URLs (no-JS / middle-click safe).
+  When hx_target is set, the links also carry hx-* attributes so a click swaps that target
+  in place instead of reloading.
+
+  Context: page, items, prev_number, next_number, hx_target
+{% endcomment %}
 <span class="text-xs text-base-content/60">Showing {{ page.start_index }} to {{ page.end_index }} of {{ page.paginator.count }}</span>
 
 <div class="join">
-  {% if page.has_previous %}
+  {% if prev_number %}
+    {% querystring page=prev_number as prev_url %}
     <a class="join-item btn btn-sm pb-0.5"
-       href="{{ url }}?{{ page_param }}={{ page.previous_page_number }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">‹</a>
+       href="{{ prev_url }}"
+       {% if hx_target %}hx-get="{{ prev_url }}" hx-target="{{ hx_target }}" hx-swap="innerHTML" hx-push-url="true"{% endif %}>‹</a>
   {% else %}
     <button class="join-item btn btn-sm pb-0.5 btn-disabled">‹</button>
   {% endif %}
 
-  {% for i in page_range %}
-    {% if i == page.paginator.ELLIPSIS %}
-      <a class="join-item btn btn-sm btn-disabled px-1"
-         href="{{ url }}?{{ page_param }}={{ i }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">{{ i }}</a>
-    {% elif i == page.number %}
-      <a class="join-item btn btn-sm btn-active"
-         href="{{ url }}?{{ page_param }}={{ i }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">{{ i }}</a>
+  {% for item in items %}
+    {% if item.ellipsis %}
+      <div class="join-item btn btn-sm pointer-events-none text-base-content/40 px-1">{{ item.label }}</div>
     {% else %}
-      <a class="join-item btn btn-sm"
-         href="{{ url }}?{{ page_param }}={{ i }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">{{ i }}</a>
+      {% querystring page=item.number as item_url %}
+      <a class="join-item btn btn-sm {% if item.current %}btn-active{% endif %}"
+         href="{{ item_url }}"
+         {% if hx_target %}hx-get="{{ item_url }}" hx-target="{{ hx_target }}" hx-swap="innerHTML" hx-push-url="true"{% endif %}>{{ item.number }}</a>
     {% endif %}
   {% endfor %}
 
-  {% if page.has_next %}
+  {% if next_number %}
+    {% querystring page=next_number as next_url %}
     <a class="join-item btn btn-sm pb-0.5"
-       href="{{ url }}?{{ page_param }}={{ page.next_page_number }}{% if page_size %}&{{ size_param }}={{ page_size }}{% endif %}">›</a>
+       href="{{ next_url }}"
+       {% if hx_target %}hx-get="{{ next_url }}" hx-target="{{ hx_target }}" hx-swap="innerHTML" hx-push-url="true"{% endif %}>›</a>
   {% else %}
     <button class="join-item btn btn-sm pb-0.5 btn-disabled">›</button>
   {% endif %}

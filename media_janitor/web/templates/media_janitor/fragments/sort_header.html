@@ -1,0 +1,29 @@
+{% comment %}
+  One sortable table header cell. The link requests the column's next sort action and
+  removes the page (if there was one). With hx_target set it swaps that target over HTMX,
+  otherwise it is a plain GET. The direction indicator shows only for the active column
+  (sort_state.dir is non-empty).
+
+  Context:
+    - sort_state: display.SortColumn, the current state and next actions if this column is clicked
+    - label: column header
+    - th_class: extra classes for the header
+    - hx_target: optional, sets the HTMX swap target if given (otherwise it's a regular non-HTMX request)
+{% endcomment %}
+<th class="{{ th_class }}">
+  {% querystring sort=sort_state.next_sort dir=sort_state.next_dir page=None as sort_url %}
+  <a class="inline-flex items-center gap-1 cursor-pointer hover:text-base-content {% if sort_state.dir %}text-base-content{% endif %} w-full h-full"
+     href="{{ sort_url }}"
+     {% if hx_target %}hx-get="{{ sort_url }}" hx-target="{{ hx_target }}" hx-swap="innerHTML" hx-push-url="true"{% endif %}>
+    {{ label }}
+    {% if sort_state.dir %}
+      <span class="text-base-content/70 size-3">
+        {% if sort_state.dir == 'asc' %}
+          {% include "theme/icons/arrow-long-up.svg" %}
+        {% else %}
+          {% include "theme/icons/arrow-long-down.svg" %}
+        {% endif %}
+      </span>
+    {% endif %}
+  </a>
+</th>

@@ -3,17 +3,22 @@
   Reclaim list table with pagination. Rendered standalone on an HTMX request and embedded
   in reclaim.html on a full page load, so it must carry no page chrome.
 
-  Context: page_obj, the paginator Page instance
+  Context:
+    - page_obj: the paginator Page instance
+    - sort: sort key (column)
+    - dir: sort direction (asc/desc)
+    - sort_columns: dict of column name to display.SortColumn, which tells us what to do
+                    when the column is clicked.
 {% endcomment %}
 <div class="overflow-x-auto">
   <table class="table table-xs w-full table-fixed min-w-175">
     <thead>
       <tr class="bg-base-200/50 text-xs">
-        <th class="w-34">Status</th>
-        <th>Name / Path</th>
+        {% sort_header sort_columns.status "Status" hx_target="#reclaim-table" th_class="w-34" %}
+        {% sort_header sort_columns.name "Name / Path" hx_target="#reclaim-table" %}
         <th class="w-32">Flags</th>
         <th class="w-18">Kind</th>
-        <th class="w-22">Size</th>
+        {% sort_header sort_columns.size "Size" hx_target="#reclaim-table" th_class="w-22" %}
         <th class="w-22 text-nowrap">Seeding met?</th>
         {# Action column #}
         <th class="w-10"></th>
@@ -96,6 +101,6 @@
 
 {% if page_obj.paginator.count %}
   <div class="flex items-baseline justify-between gap-4 px-4 py-2 border-t border-base-300">
-    {% pagination_controls page_obj %}
+    {% pagination_controls page_obj hx_target="#reclaim-table" %}
   </div>
 {% endif %}

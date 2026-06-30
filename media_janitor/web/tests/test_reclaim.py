@@ -111,6 +111,166 @@ def test_query_count(logged_in_client, django_assert_num_queries):
 
 
 @pytest.mark.django_db
+def test_sort_by_status_uses_vocabulary_order(logged_in_client):
+    make_complete_scan()
+    # Vocabulary order: reclaimable, linked_externally, seeding_hold, in_library, in_progress
+    # which maps to sizes 6000, 3000, 4000, 2000, 1000.
+    asc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "asc"})
+    assert [b.size for b in asc.context["page_obj"]] == [6000, 3000, 4000, 2000, 1000]
+
+    desc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "desc"})
+    assert [b.size for b in desc.context["page_obj"]] == [1000, 2000, 4000, 3000, 6000]
+
+
+@pytest.mark.django_db
+def test_sort_by_name_uses_display_link(logged_in_client):
+    make_complete_scan()
+    # Display names sort as: example.mkv (6000), example.nfo (2000), external.mkv (3000),
+    # incoming.part (1000), show.mkv (4000).
+    asc = logged_in_client.get(reverse("reclaim"), {"sort": "name", "dir": "asc"})
+    assert [b.size for b in asc.context["page_obj"]] == [6000, 2000, 3000, 1000, 4000]
+
+    desc = logged_in_client.get(reverse("reclaim"), {"sort": "name", "dir": "desc"})
+    assert [b.size for b in desc.context["page_obj"]] == [4000, 1000, 3000, 2000, 6000]
+
+
+@pytest.mark.django_db
+def test_name_sort_picks_lowest_path_link(logged_in_client):
+    scan = make_scan()
+    # This blob's lowest path resolves to name "aaa.mkv", which should sort it first even
+    # though it also has a later link named "zzz.mkv".
+    first = make_blob(scan, st_ino=1, size=1000)
+    make_link(first, "media/a/aaa.mkv")
+    make_link(first, "torrents/z/zzz.mkv")
+    second = make_blob(scan, st_ino=2, size=2000)
+    make_link(second, "media/b/bbb.mkv")
+
+    response = logged_in_client.get(reverse("reclaim"), {"sort": "name", "dir": "asc"})
+    assert [b.size for b in response.context["page_obj"]] == [1000, 2000]
+
+
+@pytest.mark.django_db
+def test_sort_tie_break_on_pk(logged_in_client):
+    scan = make_scan()
+    blobs = [make_blob(scan, st_ino=i, size=1000) for i in range(1, 4)]
+
+    response = logged_in_client.get(reverse("reclaim"), {"sort": "size", "dir": "desc"})
+    pks = [blob.pk for blob in response.context["page_obj"]]
+    # Equal sizes fall back to the stable pk tie-break (creation order)
+    assert pks == [blob.pk for blob in blobs]
+
+
+@pytest.mark.django_db
+def test_invalid_sort_params_fall_back_to_default(logged_in_client):
+    make_complete_scan()
+    response = logged_in_client.get(reverse("reclaim"), {"sort": "bogus", "dir": "sideways"})
+    assert response.status_code == 200
+    # Invalid sort drops to the unsorted state (None), which still orders size desc
+    assert response.context["sort"] is None
+    assert response.context["dir"] is None
+    sizes = [blob.size for blob in response.context["page_obj"]]
+    assert sizes == [6000, 4000, 3000, 2000, 1000]
+
+
+@pytest.mark.django_db
+def test_sort_persists_across_pagination(logged_in_client):
+    make_complete_scan()
+    # Size ascending: [1000, 2000, 3000, 4000, 6000]; page 2 with size 2 is [3000, 4000]
+    page2 = logged_in_client.get(
+        reverse("reclaim"),
+        {"sort": "size", "dir": "asc", "page_size": 2, "page": 2},
+    )
+    assert [b.size for b in page2.context["page_obj"]] == [3000, 4000]
+
+
+@pytest.mark.django_db
+def test_sort_links_reset_page_and_preserve_params(logged_in_client):
+    make_complete_scan()
+    # On page 2 with a custom page size, the sort header links must keep page_size, set the
+    # new sort, and drop the page param (resetting to page 1). Ampersands are HTML-escaped.
+    response = logged_in_client.get(
+        reverse("reclaim"),
+        {"page_size": 2, "page": 2},
+    )
+    content = response.content.decode()
+    # Clicking Status (currently inactive) defaults to ascending, keeps page_size, and drops
+    # the page param. The href value ends right after the page_size override.
+    assert 'page_size=2&amp;sort=status&amp;dir=asc"' in content
+
+
+@pytest.mark.django_db
+def test_active_sort_header_flips_direction(logged_in_client):
+    make_complete_scan()
+    response = logged_in_client.get(reverse("reclaim"), {"sort": "size", "dir": "desc"})
+    content = response.content.decode()
+    # The active Size header links to the opposite direction
+    assert "sort=size&amp;dir=asc" in content
+
+
+@pytest.mark.django_db
+def test_size_sort_three_state_cycle(logged_in_client):
+    make_complete_scan()
+
+    # State 1 (none): no params. Size column inactive, first click sorts at its default (desc)
+    none = logged_in_client.get(reverse("reclaim"))
+    col = none.context["sort_columns"]["size"]
+    assert col["dir"] == ""
+    assert (col["next_sort"], col["next_dir"]) == ("size", "desc")
+    assert [b.size for b in none.context["page_obj"]] == [6000, 4000, 3000, 2000, 1000]
+
+    # State 2 (default dir): size desc. Next click flips to the other direction (asc)
+    desc = logged_in_client.get(reverse("reclaim"), {"sort": "size", "dir": "desc"})
+    col = desc.context["sort_columns"]["size"]
+    assert col["dir"] == "desc"
+    assert (col["next_sort"], col["next_dir"]) == ("size", "asc")
+
+    # State 3 (other dir): size asc. Next click clears the sort (empty sort/dir)
+    asc = logged_in_client.get(reverse("reclaim"), {"sort": "size", "dir": "asc"})
+    col = asc.context["sort_columns"]["size"]
+    assert col["dir"] == "asc"
+    assert (col["next_sort"], col["next_dir"]) == (None, None)
+    assert [b.size for b in asc.context["page_obj"]] == [1000, 2000, 3000, 4000, 6000]
+
+
+@pytest.mark.django_db
+def test_text_column_cycle_starts_ascending(logged_in_client):
+    make_complete_scan()
+    # Name/Status default to ascending: none -> asc -> desc -> none
+    none = logged_in_client.get(reverse("reclaim"))
+    assert none.context["sort_columns"]["status"]["next_dir"] == "asc"
+
+    asc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "asc"})
+    assert asc.context["sort_columns"]["status"]["next_dir"] == "desc"
+
+    desc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "desc"})
+    col = desc.context["sort_columns"]["status"]
+    assert (col["next_sort"], col["next_dir"]) == (None, None)
+
+
+@pytest.mark.django_db
+def test_clear_sort_link_drops_sort_params(logged_in_client):
+    make_complete_scan()
+    # When a column is at its second direction, its header link clears sort and dir so the
+    # only thing left is the surviving page_size param.
+    response = logged_in_client.get(
+        reverse("reclaim"), {"sort": "size", "dir": "asc", "page_size": 2}
+    )
+    content = response.content.decode()
+    # The Size header (active asc) clears to just page_size; no sort= or dir= remain on it
+    assert 'href="?page_size=2"' in content
+
+
+@pytest.mark.django_db
+def test_query_count_name_sort(logged_in_client, django_assert_num_queries):
+    make_complete_scan()
+    # The name sort adds a correlated Subquery annotation for the display-link name, but it
+    # is inlined into the page SELECT, so the query count matches the default (see
+    # test_query_count for the per-query breakdown).
+    with django_assert_num_queries(7):
+        logged_in_client.get(reverse("reclaim"), {"sort": "name", "dir": "asc"})
+
+
+@pytest.mark.django_db
 def test_no_scan_renders_empty_state(logged_in_client):
     make_scan(status=Scan.Status.RUNNING)
     make_scan(status=Scan.Status.FAILED)

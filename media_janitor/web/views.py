@@ -9,8 +9,9 @@ from django.views.generic import View
 from django_htmx.middleware import HtmxDetails
 
 from scanner.models import Blob, Link, Scan
-from web import display
+from web import display, filters
 from web.display import SortColumn
+from web.filters import FilterState
 
 
 class HtmxHttpRequest(HttpRequest):
@@ -62,8 +63,11 @@ class ReclaimListView(LoginRequiredMixin, View):
 
         page_size = self._coerce_page_size(request.GET.get("page_size"))
         sort, direction = self._resolve_sort(request)
+        active_filters = filters.resolve_filters(request.GET)
 
-        blobs = self._sorted_blobs(scan, sort or self.DEFAULT_SORT, direction or self.DEFAULT_DIR)
+        blobs = self._sorted_blobs(
+            scan, sort or self.DEFAULT_SORT, direction or self.DEFAULT_DIR, active_filters
+        )
 
         paginator = Paginator[Blob](blobs, page_size)
         # get_page() is forgiving: invalid or out-of-range pages return the first or last page
@@ -75,11 +79,24 @@ class ReclaimListView(LoginRequiredMixin, View):
             # Attached for the template only, the model has no such fields
             blob.sorted_links = links  # type: ignore[attr-defined]
 
+        # matching_count is the filtered set, total_count is every blob in the scan.
+        # When no filter is active the two are equal, so we skip the extra count query.
+        any_filter = filters.filters_active(active_filters)
+        matching_count = page_obj.paginator.count
+        total_count = scan.blobs.count() if any_filter else matching_count
+
         context = {
             "page_obj": page_obj,
             "sort": sort,
             "dir": direction,
             "sort_columns": self._sort_columns(sort, direction),
+            "status_chips": filters.status_chips(active_filters["statuses"]),
+            "kind_chips": filters.kind_chips(active_filters["kinds"]),
+            "flag_chips": filters.flag_chips(active_filters["flags"]),
+            "q": active_filters["q"],
+            "any_filter": any_filter,
+            "matching_count": matching_count,
+            "total_count": total_count,
         }
 
         return render(request, self.get_template_name(request), context)
@@ -139,18 +156,22 @@ class ReclaimListView(LoginRequiredMixin, View):
         ]
         return Case(*whens, default=Value(len(display.STATUS_VOCAB)), output_field=IntegerField())
 
-    def _sorted_blobs(self, scan: Scan, sort: str, direction: str) -> QuerySet[Blob]:
+    def _sorted_blobs(
+        self, scan: Scan, sort: str, direction: str, active_filters: FilterState
+    ) -> QuerySet[Blob]:
         """
-        Build the ordered blob queryset for a scan
+        Build the filtered, ordered blob queryset for a scan
 
-        Annotations backing the name and status sorts are attached only when that sort is
-        active. Every sort tie-breaks on pk so pagination slices are stable.
+        Filters are applied before sorting and pagination. Annotations backing the name and
+        status sorts are attached only when that sort is active. Every sort tie-breaks on pk
+        so pagination slices are stable.
 
         :param scan: the scan whose blobs to list
         :param sort: a validated key from SORT_FIELDS
         :param direction: "asc" or "desc"
+        :param active_filters: the validated active filters to narrow by
         """
-        blobs = scan.blobs.prefetch_related("links")
+        blobs = filters.apply_filters(scan.blobs.prefetch_related("links"), active_filters)
 
         if sort == "name":
             display_name = Subquery(

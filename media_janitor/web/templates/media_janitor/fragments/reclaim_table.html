@@ -8,8 +8,106 @@
     - sort: sort key (column)
     - dir: sort direction (asc/desc)
     - sort_columns: dict of column name to display.SortColumn, which tells us what to do
-                    when the column is clicked.
+                    when the column is clicked
+    - status_chips / kind_chips / flag_chips: lists of display.FilterChip for the filter bar
+    - q: the active text search term
+    - any_filter: whether any filter is active
+    - matching_count / total_count: filtered and scan-wide blob counts
 {% endcomment %}
+
+{# Filter bar. Lives inside the fragment so its active/count state re-renders on every swap. #}
+<div class="flex flex-col gap-3 px-4 py-3 border-b border-base-300 text-xs">
+  <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+    {# Status chips (multi-select, OR within), as a segmented button group #}
+    <div class="flex items-center gap-2">
+      <span class="text-base-content/50 cursor-help"
+            title="ORed together (shows any of the selected statuses)">Status</span>
+      <div class="join">
+        {% for chip in status_chips %}
+          {% querystring status=chip.next_values page=None as chip_url %}
+          <a class="btn btn-xs join-item {% if chip.active %}{{ chip.btn }}{% else %}btn-soft{% endif %}"
+             href="{{ chip_url }}"
+             hx-get="{{ chip_url }}"
+             hx-target="#reclaim-table"
+             hx-swap="innerHTML"
+             hx-push-url="true">{{ chip.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Kind chips (multi-select, OR within) #}
+    <div class="flex items-center gap-2">
+      <span class="text-base-content/50 cursor-help"
+            title="ORed together (shows any of the selected file kinds)">Kind</span>
+      <div class="join">
+        {% for chip in kind_chips %}
+          {% querystring kind=chip.next_values page=None as chip_url %}
+          <a class="btn btn-xs join-item {% if chip.active %}{{ chip.btn }}{% else %}btn-soft{% endif %}"
+             href="{{ chip_url }}"
+             hx-get="{{ chip_url }}"
+             hx-target="#reclaim-table"
+             hx-swap="innerHTML"
+             hx-push-url="true">{{ chip.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Flag toggles (AND within: each selected flag narrows further) #}
+    <div class="flex items-center gap-2">
+      <span class="text-base-content/50 cursor-help"
+            title="ANDed together (shows blobs with all of the selected flags)">Flags</span>
+      <div class="join">
+        {% for chip in flag_chips %}
+          {% querystring flag=chip.next_values page=None as chip_url %}
+          <a class="btn btn-xs join-item {% if chip.active %}{{ chip.btn }}{% else %}btn-soft{% endif %}"
+             href="{{ chip_url }}"
+             hx-get="{{ chip_url }}"
+             hx-target="#reclaim-table"
+             hx-swap="innerHTML"
+             hx-push-url="true">{{ chip.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+    {# Text search over link name / path, debounced. HTMX appends the live q value. #}
+    <label class="input input-sm w-64 items-center">
+      <span class="inline-flex items-center size-4 opacity-50">{% include "theme/icons/magnifying-glass.svg" %}</span>
+      {# ID is required so HTMX restores focus after a debounced automatic search #}
+      <input id="reclaim-search"
+             type="search"
+             name="q"
+             value="{{ q }}"
+             placeholder="Search name or path"
+             class="grow"
+             hx-get="{% querystring q=None page=None %}"
+             hx-trigger="input changed delay:300ms, search"
+             hx-target="#reclaim-table"
+             hx-swap="innerHTML"
+             hx-push-url="true">
+    </label>
+
+    {% if any_filter %}
+      {% querystring status=None kind=None flag=None q=None page=None as clear_url %}
+      <a class="btn btn-sm btn-soft btn-error"
+         href="{{ clear_url }}"
+         hx-get="{{ clear_url }}"
+         hx-target="#reclaim-table"
+         hx-swap="innerHTML"
+         hx-push-url="true">Clear filters</a>
+    {% endif %}
+
+    <span class="text-base-content/60">
+      {% if any_filter %}
+        <span class="font-medium text-base-content">{{ matching_count }}</span> matching, filtered from {{ total_count }} total
+      {% else %}
+        <span class="font-medium text-base-content">{{ total_count }}</span> total
+      {% endif %}
+    </span>
+  </div>
+</div>
+
 <div class="overflow-x-auto">
   <table class="table table-xs w-full table-fixed min-w-175">
     <thead>
@@ -92,7 +190,13 @@
         </tr>
       {% empty %}
         <tr>
-          <td colspan="7" class="text-center text-base-content/60 py-6">This scan has no blobs.</td>
+          <td colspan="7" class="text-center text-base-content/60 py-6 text-xs">
+            {% if any_filter %}
+              No blobs match the current filters
+            {% else %}
+              This scan has no blobs
+            {% endif %}
+          </td>
         </tr>
       {% endfor %}
     </tbody>

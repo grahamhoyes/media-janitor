@@ -87,7 +87,7 @@ def test_status_label_and_badge():
 def test_status_badge_inclusion_tag():
     blob = Blob(status=Blob.Status.SEEDING_HOLD)
     ctx = status_badge(blob)
-    assert ctx == {"label": "Seeding hold", "badge": "badge-warning"}
+    assert ctx == {"label": "Seeding Hold", "badge": "badge-warning"}
 
 
 # -- flag vocabulary ------------------------------------------------------------
@@ -118,11 +118,11 @@ def test_active_flags_returns_truthy_in_order():
     )
     labels = [label for label, _ in active_flags(blob)]
     # Order follows FLAG_VOCAB, not the order the flags were set.
-    assert labels == ["Cross seed", "Partial torrent", "Outside scope"]
+    assert labels == ["Cross Seed", "Partial Torrent", "Outside Scope"]
 
 
 def test_active_flags_includes_tooltips():
     blob = _bare_blob(multi_link=True)
     assert active_flags(blob) == [
-        ("Multi link", "Has more than one hard link in the same tree"),
+        ("Multi Link", "Has more than one hard link in the same tree"),
     ]

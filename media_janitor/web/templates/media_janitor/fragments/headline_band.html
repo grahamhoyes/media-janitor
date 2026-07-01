@@ -12,19 +12,17 @@
     <div class="flex-1 min-w-0">
       <div class="flex h-3 w-full gap-px overflow-hidden rounded">
         {% for seg in segments %}
-          {# TODO: Make these link to a filtered reclaim list #}
           <a class="{{ seg.bar_class }}"
              style="width: {{ seg.pct }}%"
              title="{{ seg.label }}: {{ seg.bytes|binsize }} ({{ seg.pct }}%)"
-             href="#"></a>
+             href="{% url 'reclaim' %}?status={{ seg.key }}"></a>
         {% endfor %}
       </div>
 
       <div class="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
         {% for seg in segments %}
-          {# TODO: Make these link to a filtered reclaim list #}
           <a class="flex items-baseline gap-1 text-xs text-base-content/60"
-             href="#">
+             href="{% url 'reclaim' %}?status={{ seg.key }}">
             <span class="inline-block h-2 w-2 rounded-sm {{ seg.dot_class }}"></span>
             <span>{{ seg.label }}</span>
             <span class="font-mono text-base-content/40">{{ seg.bytes|binsize }}</span>

@@ -25,10 +25,10 @@ def test_headline_segments_ordering_labels_and_pcts():
     labels = [seg["label"] for seg in segments]
     assert labels == [
         "Reclaimable",
-        "Linked externally",
-        "Seeding hold",
-        "In library",
-        "In progress",
+        "Linked Externally",
+        "Seeding Hold",
+        "In Library",
+        "In Progress",
     ]
 
     by_key = {seg["key"]: seg for seg in segments}

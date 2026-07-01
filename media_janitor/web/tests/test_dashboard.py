@@ -22,10 +22,10 @@ def test_status_breakdown_ordering_and_values():
     ]
     assert [row["label"] for row in rows] == [
         "Reclaimable",
-        "Linked externally",
-        "Seeding hold",
-        "In library",
-        "In progress",
+        "Linked Externally",
+        "Seeding Hold",
+        "In Library",
+        "In Progress",
     ]
 
     by_key = {row["key"]: row for row in rows}
@@ -113,10 +113,10 @@ def test_dashboard_shows_status_breakdown(logged_in_client):
     content = logged_in_client.get(reverse("dashboard")).content.decode()
     for label in (
         "Reclaimable",
-        "Linked externally",
-        "Seeding hold",
-        "In library",
-        "In progress",
+        "Linked Externally",
+        "Seeding Hold",
+        "In Library",
+        "In Progress",
     ):
         assert label in content
     # Per-status sizes render

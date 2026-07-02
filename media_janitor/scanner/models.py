@@ -138,6 +138,7 @@ class Tree(models.TextChoices):
 
     LIBRARY = "library"
     TORRENTS = "torrents"
+    # TODO: Rename to other?
     LOOSE = "loose"
 
 

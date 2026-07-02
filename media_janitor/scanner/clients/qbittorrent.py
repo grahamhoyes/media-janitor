@@ -9,11 +9,19 @@ to normalized objects from base.py for the rest of the pipeline.
 
 import asyncio
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 
 import httpx
 from django.conf import settings
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from .base import (
     ClientSnapshot,
@@ -66,6 +74,21 @@ _STOPPED_STATES: frozenset[str] = frozenset(
 # Bound concurrency of per-torrent files requests to avoid hammering the API
 _FILES_CONCURRENCY = 8
 
+# A scan makes hundreds of individual requests (one torrents/files call per
+# torrent). Retry transient timeouts a few times so one flaky connection doesn't
+# fail the whole scan.
+_MAX_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = 1.0
+_HTTP_TIMEOUT = 10.0
+
+_retry_on_timeout = retry(
+    retry=retry_if_exception_type(httpx.TimeoutException),
+    stop=stop_after_attempt(_MAX_ATTEMPTS),
+    wait=wait_exponential(multiplier=_RETRY_BACKOFF_SECONDS),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+
 
 class QBittorrentError(Exception):
     """Raised when the qBittorrent API cannot be reached or returns an error"""
@@ -101,6 +124,7 @@ class QBittorrentClient(DownloadClient):
             client = httpx.AsyncClient(
                 base_url=host,
                 headers={"Authorization": f"Bearer {api_key}"},
+                timeout=_HTTP_TIMEOUT,
             )
         else:
             client.headers.update({"Authorization": f"Bearer {api_key}"})
@@ -165,16 +189,31 @@ class QBittorrentClient(DownloadClient):
             return None
         return timedelta(seconds=value)
 
+    @_retry_on_timeout
+    async def _request(self, url: str, params: dict[str, str] | None) -> httpx.Response:
+        return await self._client.get(url, params=params)
+
     async def _get(self, url: str, params: dict[str, str] | None = None) -> httpx.Response:
         """
-        GET an API endpoint
+        GET an API endpoint, retrying transient timeouts
 
         Raises QBittorrentError on errors
+
+        :param url: API path to GET
+        :param params: Query parameters
         """
+        start = time.monotonic()
         try:
-            response = await self._client.get(url, params=params)
+            response = await self._request(url, params)
         except httpx.HTTPError as exc:
-            raise QBittorrentError(f"qBittorrent request failed: {exc}") from exc
+            elapsed = time.monotonic() - start
+            logger.warning(
+                f"qBittorrent request failed: GET {url} params={params} "
+                f"elapsed={elapsed:.2f}s error={exc!r}"
+            )
+            raise QBittorrentError(
+                f"qBittorrent request to {url} failed after {elapsed:.2f}s: {exc!r}"
+            ) from exc
         if response.status_code in (401, 403):
             raise QBittorrentError(
                 f"qBittorrent authentication failed (status={response.status_code}). "
@@ -250,7 +289,11 @@ class QBittorrentClient(DownloadClient):
             logger.info(f"Skipping torrent {t['hash']} outside data root", exc_info=True)
             return None
 
-        files = await self._gather_files(t["hash"], t["save_path"], semaphore)
+        try:
+            files = await self._gather_files(t["hash"], t["save_path"], semaphore)
+        except QBittorrentError:
+            logger.warning(f"failed fetching files for torrent {t['hash']} (save_path={save_path})")
+            raise
 
         raw_state = t["state"]
         return TorrentSnapshot(
@@ -267,15 +310,28 @@ class QBittorrentClient(DownloadClient):
         )
 
     async def gather(self) -> ClientSnapshot:
+        gather_start = time.monotonic()
+
         version_response = await self._get("/api/v2/app/version")
         server_version = version_response.text.strip()
+        logger.info(f"qBittorrent server version={server_version}")
 
         info_response = await self._get("/api/v2/torrents/info")
         torrents_data = info_response.json()
+        logger.info(
+            f"qBittorrent reported {len(torrents_data)} torrents. "
+            f"Fetching files with concurrency={_FILES_CONCURRENCY}"
+        )
 
         semaphore = asyncio.Semaphore(_FILES_CONCURRENCY)
         results = await asyncio.gather(*(self._gather_torrent(t, semaphore) for t in torrents_data))
 
         torrents = [t for t in results if t is not None]
+
+        elapsed = time.monotonic() - gather_start
+        logger.info(
+            f"qBittorrent gather finished: {len(torrents)}/{len(torrents_data)} torrents "
+            f"in {elapsed:.2f}s"
+        )
 
         return ClientSnapshot(server_version=server_version, torrents=torrents)

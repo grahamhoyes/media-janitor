@@ -7,8 +7,8 @@ from scanner.models import Blob, Scan
 
 # DaisyUI styling classes per Blob.Status. Labels come from Blob.Status(...).label.
 # The next lines are a hack to make sure tailwind picks up these class names.
-# class="badge-success badge-secondary badge-warning badge-info badge-neutral"
-# class="btn-success btn-secondary btn-warning btn-info btn-neutral btn-primary"
+# class="badge-success badge-secondary badge-warning badge-info badge-neutral badge-accent"
+# class="btn-success btn-secondary btn-warning btn-info btn-neutral btn-primary btn-accent"
 STATUS_VOCAB: dict[str, dict[str, str]] = {
     Blob.Status.RECLAIMABLE: {
         "badge": "badge-success",
@@ -27,8 +27,8 @@ STATUS_VOCAB: dict[str, dict[str, str]] = {
         "btn": "btn-info",
     },
     Blob.Status.IN_PROGRESS: {
-        "badge": "badge-neutral",
-        "btn": "btn-neutral",
+        "badge": "badge-accent",
+        "btn": "btn-accent",
     },
 }
 

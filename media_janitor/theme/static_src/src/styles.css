@@ -5,14 +5,21 @@
 
 @plugin "daisyui" {
   /* Must be added to theme/context_processors.py */
-  themes: corporate --default, business;
+  themes: light --default, dark --prefersdark;
 }
+
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 /* == Daisy UI theme overrides ============================================= */
 
-/* Match Corporate's selector radius (badges/toggles/checkboxes/tabs) */
+/* Slightly tighter selector radius (badges/toggles/checkboxes/tabs) */
 @plugin "daisyui/theme" {
-  name: "business";
+  name: "light";
+  --radius-selector: 0.25rem;
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
   --radius-selector: 0.25rem;
 }
 

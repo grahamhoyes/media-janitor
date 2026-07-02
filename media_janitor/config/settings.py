@@ -14,6 +14,7 @@ REPO_ROOT = BASE_DIR.parent
 env = environ.Env(
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
+    CSRF_TRUSTED_ORIGINS=(list, []),
 )
 
 # Load repo-root .env if present (dev). In deployment, real env vars take precedence.
@@ -23,7 +24,9 @@ SECRET_KEY = env("SECRET_KEY")
 if not SECRET_KEY:
     raise ImproperlyConfigured("SECRET_KEY environment variable not set")
 DEBUG = env("DEBUG")
+
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 
 # Filesystem. SHARE_ROOT is where Media Janitor sees the share root. The scan walks
 # everything under it.

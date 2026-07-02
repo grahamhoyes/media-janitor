@@ -48,13 +48,15 @@ mounts only the share's `torrents/` subdirectory, but its paths are still rooted
 
 Copy [.env.example](.env.example) to `.env`, then update the settings below.
 
-| Setting          | Description                                                                       |
-|------------------|-----------------------------------------------------------------------------------|
-| `SECRET_KEY`     | Django secret key. Must be set for the application to start.                      |
-| `SHARE_ROOT`     | Path where Media Janitor sees the share root. The scan walks everything under it. |
-| `QBIT_HOST`      | qBittorrent WebUI URL                                                             |
-| `QBIT_API_KEY`   | qBittorrent 5.2 WebUI API key (Settings > WebUI > Authentication)                 |
-| `QBIT_DATA_ROOT` | qBittorrent data root (see [Mount points](#mount-points))                         |
+| Setting                | Description                                                                                                                                                                                                                                                                                                                                   |
+|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SECRET_KEY`           | Django secret key. Must be set for the application to start.                                                                                                                                                                                                                                                                                  |
+| `ALLOWED_HOSTS`        | [Django ALLOWED_HOSTS](https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts). A comma-separated list of hostnames the app can be served under.                                                                                                                                                                                   |
+| `CSRF_TRUSTED_ORIGINS` | [Django CSRF_TRUSTED_ORIGINS](https://docs.djangoproject.com/en/dev/ref/settings/#csrf-trusted-origins). A comma-separated list of origins, including scheme (`https://`), that the app can be served under. Required if serving behind a TLS-terminating reverse proxy. Should usually include any non-localhost hosts from `ALLOWED_HOSTS`. |
+| `SHARE_ROOT`           | Path where Media Janitor sees the share root. The scan walks everything under it.                                                                                                                                                                                                                                                             |
+| `QBIT_HOST`            | qBittorrent WebUI URL                                                                                                                                                                                                                                                                                                                         |
+| `QBIT_API_KEY`         | qBittorrent 5.2 WebUI API key (Settings > WebUI > Authentication)                                                                                                                                                                                                                                                                             |
+| `QBIT_DATA_ROOT`       | qBittorrent data root (see [Mount points](#mount-points))                                                                                                                                                                                                                                                                                     |
 
 The env file also has settings which are used only when running through [docker-compose.yml](docker-compose.yml):
 

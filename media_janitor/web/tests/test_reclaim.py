@@ -116,10 +116,10 @@ def test_sort_by_status_uses_vocabulary_order(logged_in_client):
     # Vocabulary order: reclaimable, linked_externally, seeding_hold, in_library, in_progress
     # which maps to sizes 6000, 3000, 4000, 2000, 1000.
     asc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "asc"})
-    assert [b.size for b in asc.context["page_obj"]] == [6000, 3000, 4000, 2000, 1000]
+    assert [b.size for b in asc.context["page_obj"]] == [6000, 2000, 1000, 4000, 3000]
 
     desc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "desc"})
-    assert [b.size for b in desc.context["page_obj"]] == [1000, 2000, 4000, 3000, 6000]
+    assert [b.size for b in desc.context["page_obj"]] == [3000, 4000, 1000, 2000, 6000]
 
 
 @pytest.mark.django_db

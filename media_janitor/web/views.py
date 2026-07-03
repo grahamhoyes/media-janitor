@@ -2,13 +2,13 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.db.models import Case, IntegerField, OuterRef, QuerySet, Subquery, Value, When
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render
+from django.http import Http404, HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.generic import View
 from django_htmx.middleware import HtmxDetails
 
-from scanner.models import Blob, Link, Scan
+from scanner.models import Blob, Config, Link, Scan
 from web import display, filters
 from web.display import SortColumn
 from web.filters import FilterState
@@ -243,6 +243,38 @@ def dashboard(request):
             "totals": display.dashboard_totals(scan),
             "torrent_count": scan.torrents.count(),
             "breakdown": display.status_breakdown(scan),
+        },
+    )
+
+
+@login_required
+def blob_detail(request: HttpRequest, pk: int) -> HttpResponse:
+    """
+    Render the blob detail drawer fragment for one blob of the current scan
+
+    Scoped to the current scan so a stale or unknown pk 404s the same way the reclaim list
+    only ever shows the current scan.
+
+    :param request: the incoming request
+    :param pk: primary key of the blob to show
+    """
+    scan = Scan.current()
+    if scan is None:
+        raise Http404("No completed scan")
+
+    blob = get_object_or_404(scan.blobs.prefetch_related("links", "torrents"), pk=pk)
+
+    return render(
+        request,
+        "media_janitor/fragments/blob_detail.html",
+        {
+            "blob": blob,
+            "link_groups": display.links_by_tree(blob.links.all()),
+            # Sorted for stable output. The prefetch cache means no extra query.
+            "torrents": sorted(blob.torrents.all(), key=lambda torrent: torrent.hash),
+            "flags": display.active_flags(blob),
+            "links_outside": blob.nlink - blob.links_found,
+            "config": Config.get(),
         },
     )
 

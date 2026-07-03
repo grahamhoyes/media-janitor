@@ -124,7 +124,10 @@
     </thead>
     <tbody>
       {% for blob in page_obj %}
-        <tr class="hover:bg-base-200/50 transition-colors">
+        <tr class="hover:bg-base-200/50 transition-colors cursor-pointer"
+            hx-get="{% url 'blob_detail' blob.pk %}"
+            hx-target="#drawer"
+            hx-swap="innerHTML">
           {# Status #}
           <td>{% status_badge blob %}</td>
 
@@ -140,7 +143,7 @@
                     {% if blob.sorted_links|length > 1 and forloop.first %}
                       <button type="button"
                               class="text-base-content/70 hover:text-base-content cursor-pointer"
-                              @click="expanded = !expanded"
+                              @click.stop="expanded = !expanded"
                               x-text="!expanded ? '+{{ blob.sorted_links|length|add:"-1" }} more' : 'Show less'">
                       </button>
                     {% endif %}

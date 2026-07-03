@@ -1,9 +1,11 @@
+from collections import defaultdict
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
 from django.utils.timesince import timesince, timeuntil
 
-from scanner.models import Blob, Scan
+from scanner.models import Blob, Link, Scan, Tree
 
 # DaisyUI styling classes per Blob.Status. Labels come from Blob.Status(...).label.
 # The next lines are a hack to make sure tailwind picks up these class names.
@@ -14,14 +16,6 @@ STATUS_VOCAB: dict[str, dict[str, str]] = {
         "badge": "badge-success",
         "btn": "btn-success",
     },
-    Blob.Status.LINKED_EXTERNALLY: {
-        "badge": "badge-secondary",
-        "btn": "btn-secondary",
-    },
-    Blob.Status.SEEDING_HOLD: {
-        "badge": "badge-warning",
-        "btn": "btn-warning",
-    },
     Blob.Status.IN_LIBRARY: {
         "badge": "badge-info",
         "btn": "btn-info",
@@ -29,6 +23,14 @@ STATUS_VOCAB: dict[str, dict[str, str]] = {
     Blob.Status.IN_PROGRESS: {
         "badge": "badge-accent",
         "btn": "btn-accent",
+    },
+    Blob.Status.SEEDING_HOLD: {
+        "badge": "badge-warning",
+        "btn": "btn-warning",
+    },
+    Blob.Status.LINKED_EXTERNALLY: {
+        "badge": "badge-secondary",
+        "btn": "btn-secondary",
     },
 }
 
@@ -69,6 +71,70 @@ FLAG_VOCAB: dict[str, dict[str, str]] = {
         "description": "Has links outside the scanned directories",
     },
 }
+
+
+# A one-line explanation of why a blob has its status, shown in the detail drawer
+STATUS_REASON: dict[str, str] = {
+    Blob.Status.RECLAIMABLE: (
+        "No library link, and either not part of a torrent or its torrents have met their "
+        "seeding requirements. Safe to delete."
+    ),
+    Blob.Status.LINKED_EXTERNALLY: (
+        "Would be reclaimable, but has hard links outside the scanned trees, so deleting the "
+        "links shown here would free no space."
+    ),
+    Blob.Status.SEEDING_HOLD: (
+        "No library link, but an owning torrent has not yet met its seeding requirements."
+    ),
+    Blob.Status.IN_LIBRARY: (
+        "Has a link under a library root, so it cannot be deleted without removing it from "
+        "the library."
+    ),
+    Blob.Status.IN_PROGRESS: (
+        "An owning torrent is downloading, checking, or moving, or a link was modified within "
+        "the quarantine window."
+    ),
+}
+
+
+def status_reason(status: str) -> str:
+    """Return the one-line reasoning for a Blob.Status value, or empty when unknown"""
+    # TODO: Make this a function that takes a Blob so we can be more specific
+    #  on why something is Reclaimable (is there a torrent or not?)
+    return STATUS_REASON.get(status, "")
+
+
+class LinkGroup(TypedDict):
+    tree: str
+    label: str
+    links: list[Link]
+
+
+def links_by_tree(links: Iterable[Link]) -> list[LinkGroup]:
+    """
+    Group a blob's links by their tree, in Tree vocabulary order.
+
+    Each group holds the links for one tree (library, torrents, loose), sorted by path so the
+    output is stable. Trees with no links are omitted. Any link with an unrecognized tree is
+    dropped from the grouping.
+
+    :param links: the blob's links (typically already prefetched)
+    """
+    by_tree: dict[str, list[Link]] = defaultdict(list)
+    for link in links:
+        by_tree[link.tree].append(link)
+
+    groups: list[LinkGroup] = []
+    for tree in Tree:
+        if tree_links := by_tree.get(tree.value):
+            groups.append(
+                {
+                    "tree": tree.value,
+                    "label": tree.label,
+                    "links": sorted(tree_links, key=lambda link: link.path),
+                }
+            )
+    return groups
 
 
 def status_label(status: str) -> str:

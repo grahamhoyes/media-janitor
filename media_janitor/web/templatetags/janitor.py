@@ -9,6 +9,7 @@ register = template.Library()
 # Expose display helpers as filters. The vocabulary and logic live in web.display
 # so views and tests can import them without the template layer.
 register.filter("active_flags", display.active_flags)
+register.filter("status_reason", display.status_reason)
 register.filter("since", display.since)
 register.filter("until", display.until)
 register.filter("duration", display.duration)
@@ -40,6 +41,20 @@ def sort_header(
         "hx_target": hx_target,
         "th_class": th_class,
     }
+
+
+@register.filter
+def dirname(path: str) -> str:
+    """
+    Parent directory of a slash-separated path
+
+    Everything before the final slash, with no trailing slash. Empty when the path has no
+    directory component (a bare basename).
+
+    :param path: a slash-separated path
+    """
+    parent, _, _ = path.rpartition("/")
+    return parent
 
 
 # Binary unit suffixes, ordered smallest to largest

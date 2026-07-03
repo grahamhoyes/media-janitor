@@ -87,6 +87,27 @@
         {% endblock content %}
       </main>
 
+      {% comment %}
+        Detail drawer. Fragments are swapped into #drawer via hx-target. The after-swap listener
+        checks the toggle to show the panel once new content is swapped in. Can be closed by clicking
+        on the backdrop, Escape, or with a <label for="main-drawer"> in the drawer body.
+      {% endcomment %}
+      <div class="drawer drawer-end"
+           x-data
+           @htmx:after-swap.window="if ($event.detail.target.id === 'drawer') $refs.drawerToggle.checked = true"
+           @keydown.escape.window="$refs.drawerToggle.checked = false">
+        <input id="main-drawer"
+               x-ref="drawerToggle"
+               type="checkbox"
+               class="drawer-toggle">
+        <div class="drawer-side z-50">
+          <label for="main-drawer" aria-label="Close drawer" class="drawer-overlay"></label>
+          <aside class="min-h-full w-full max-w-xl bg-base-100 border-l border-base-300 shadow-xl">
+            <div id="drawer">{# Drawer content gets swapped in with HTMX #}</div>
+          </aside>
+        </div>
+      </div>
+
     </body>
   {% endblock body %}
 

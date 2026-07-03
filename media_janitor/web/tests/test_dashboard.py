@@ -15,17 +15,17 @@ def test_status_breakdown_ordering_and_values():
 
     assert [row["key"] for row in rows] == [
         "reclaimable",
-        "linked_externally",
-        "seeding_hold",
         "in_library",
         "in_progress",
+        "seeding_hold",
+        "linked_externally",
     ]
     assert [row["label"] for row in rows] == [
         "Reclaimable",
-        "Linked Externally",
-        "Seeding Hold",
         "In Library",
         "In Progress",
+        "Seeding Hold",
+        "Linked Externally",
     ]
 
     by_key = {row["key"]: row for row in rows}

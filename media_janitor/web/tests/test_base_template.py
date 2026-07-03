@@ -16,19 +16,19 @@ def test_headline_segments_ordering_labels_and_pcts():
     keys = [seg["key"] for seg in segments]
     assert keys == [
         "reclaimable",
-        "linked_externally",
-        "seeding_hold",
         "in_library",
         "in_progress",
+        "seeding_hold",
+        "linked_externally",
     ]
 
     labels = [seg["label"] for seg in segments]
     assert labels == [
         "Reclaimable",
-        "Linked Externally",
-        "Seeding Hold",
         "In Library",
         "In Progress",
+        "Seeding Hold",
+        "Linked Externally",
     ]
 
     by_key = {seg["key"]: seg for seg in segments}
@@ -58,10 +58,10 @@ def test_headline_segments_zero_total_no_division_error():
     segments = headline_segments(scan)
     assert [seg["key"] for seg in segments] == [
         "reclaimable",
-        "linked_externally",
-        "seeding_hold",
         "in_library",
         "in_progress",
+        "seeding_hold",
+        "linked_externally",
     ]
     assert all(seg["pct"] == 0 for seg in segments)
     assert all(seg["bytes"] == 0 for seg in segments)

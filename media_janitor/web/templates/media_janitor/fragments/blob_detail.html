@@ -1,0 +1,249 @@
+{% load janitor %}
+{% comment %}
+  Blob detail drawer fragment. Swapped into #drawer (see base.html).
+
+  Context:
+    - blob: the Blob to detail
+    - link_groups: list of display.LinkGroup (links grouped by tree, in Tree order)
+    - torrents: the blob's owning Torrent list, sorted by hash
+    - flags: list of (label, tooltip) for the blob's active flags
+    - links_outside: nlink - links_found (hard links that live outside the scanned trees)
+{% endcomment %}
+
+<div class="flex flex-col">
+  {# Header: status + close #}
+  <div class="sticky top-0 z-10 bg-base-100 border-b border-base-300 px-4 py-3 flex items-start justify-between gap-3">
+    <div class="flex flex-col gap-1 min-w-0">
+      {% status_badge blob %}
+      <p class="text-xs text-base-content/60 leading-snug">{{ blob.status|status_reason }}</p>
+    </div>
+    {% include "media_janitor/components/close-drawer.html" %}
+  </div>
+
+  <div class="flex flex-col gap-4 px-4 py-4">
+    <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+      <div>
+        <dt class="text-base-content/50">Kind</dt>
+        <dd>
+          {{ blob.get_kind_display }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Size</dt>
+        <dd class="font-mono">
+          {{ blob.size|binsize }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Trees</dt>
+        <dd class="flex flex-wrap gap-1">
+          {% for tree in blob.trees %}
+            <span class="badge badge-outline badge-xs">{{ tree|capfirst }}</span>
+          {% empty %}
+            <span class="text-base-content/40">-</span>
+          {% endfor %}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Hard links</dt>
+        <dd class="font-mono">
+          {{ blob.nlink }}
+          {% if links_outside > 0 %}
+            ({{ links_outside }} outside of scan)
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+
+    {# Outside-scope note #}
+    {% if links_outside > 0 %}
+      <div role="alert" class="alert alert-warning alert-soft text-xs py-2">
+        <span class="size-4 shrink-0">{% include "theme/icons/information-circle.svg" %}</span>
+        <span>
+          {{ links_outside }} hard link{{ links_outside|pluralize }} live outside the scanned
+          trees ({{ blob.links_found }} of {{ blob.nlink }} found). Deleting the links shown
+          here would not free space.
+        </span>
+      </div>
+    {% endif %}
+
+    {# Reason a non-media file is safe to delete, when the scan recorded one #}
+    {% if blob.orphan_reason %}
+      <div>
+        <div class="text-xs text-base-content/50 mb-1">Orphan reason</div>
+        <p class="text-xs">{{ blob.orphan_reason }}</p>
+      </div>
+    {% endif %}
+
+    {# Active flags with their explanations #}
+    {% if flags %}
+      <div>
+        <div class="text-xs text-base-content/50 mb-1">Flags</div>
+        <ul class="flex flex-col gap-1">
+          {% for label, tooltip in flags %}
+            <li class="flex items-baseline gap-2 text-xs">
+              <span class="badge badge-outline badge-xs shrink-0">{{ label }}</span>
+              {# TODO: Be more specific about why reclaimable #}
+              <span class="text-base-content/60">{{ tooltip }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    {# Links, grouped by tree #}
+    <div>
+      <div class="text-xs font-semibold text-base-content/70 mb-2">
+        Links <span class="font-normal text-base-content/40">({{ blob.links.all|length }})</span>
+      </div>
+      <div class="flex flex-col gap-3">
+        {% for group in link_groups %}
+          <div class="rounded-box border border-base-300 overflow-hidden">
+            <div class="bg-base-200/60 px-2 py-1 flex items-center justify-between">
+              <span class="text-xs font-medium">{{ group.label }}</span>
+              <span class="text-xs text-base-content/40">{{ group.links|length }}</span>
+            </div>
+            <ul class="divide-y divide-base-200">
+              {% for link in group.links %}
+                {% with dir=link.path|dirname %}
+                  {% comment %}
+                    Collapsed to a middle-truncated filename by default. Hovering the row reveals the
+                    full wrapped path via `group-hover:` variants.
+                  {% endcomment %}
+                  <li class="group px-2 py-1.5">
+                    <div class="flex items-start gap-2">
+                      <div class="min-w-0 flex-1">
+                        {% comment %}
+                          Filename, middle-truncated: the last 16 characters are always visible,
+                          everything before that can be truncated. The result is an ellipsis in
+                          the middle of the text which keeps the extension visible.
+                        {% endcomment %}
+                        <div class="flex items-baseline group-hover:hidden">
+                          <span class="font-mono text-xs font-semibold truncate min-w-0">{{ link.name|slice:":-16" }}</span>
+                          <span class="font-mono text-xs font-semibold shrink-0">{{ link.name|slice:"-16:" }}</span>
+                        </div>
+                        {% comment %}
+                          Directory. Displays below the truncated filename by default, hovering on the group
+                          hides this to reveal the full path.
+                        {% endcomment %}
+                        {% if dir %}
+                          <div class="font-mono text-xs text-base-content/40 truncate group-hover:hidden">{{ dir }}</div>
+                        {% endif %}
+                        {% comment %}
+                          Full path, wrapped, revealed on hover. Djlint wants to split this onto two lines,
+                          but we need it on one so there isn't a space in the path.
+                        {% endcomment %}
+                        {# djlint:off #}
+                        <div class="hidden group-hover:block font-mono text-xs break-all leading-tight">{% if dir %}<span class="text-base-content/40">{{ dir }}/</span>{% endif %}<span class="font-semibold">{{ link.name }}</span></div>
+                        {# djlint:on #}
+                      </div>
+
+                      <div class="flex items-center gap-1 shrink-0">
+                        {% if link.kind != "media" %}
+                          <span class="badge badge-outline badge-xs">{{ link.get_kind_display }}</span>
+                        {% endif %}
+
+                        {% comment %}
+                          Copy the share-relative path. Hidden until the row is hovered or the button
+                          is keyboard-focused, kept faintly visible on touch (no hover).
+                        {% endcomment %}
+                        <button type="button"
+                                class="btn btn-ghost btn-xs btn-square opacity-0 max-sm:opacity-60 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                data-path="{{ link.path }}"
+                                x-data="{ copied: false }"
+                                :aria-label="copied ? 'Path copied' : 'Copy path'"
+                                @click.stop="navigator.clipboard && navigator.clipboard.writeText($el.dataset.path).then(() => { copied = true; setTimeout(() => copied = false, 2000) }).catch(() => {})">
+                          <span class="size-4" x-show="!copied" title="Copy path">{% include "theme/icons/clipboard-document.svg" %}</span>
+                          <span class="size-4 text-success" x-show="copied" x-cloak>
+                            {% include "theme/icons/clipboard-document-check.svg" %}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {# Modified time #}
+                    <div class="font-mono text-xs text-base-content/40 mt-1">{{ link.mtime|date:"DATETIME_FORMAT" }}</div>
+                  </li>
+                {% endwith %}
+              {% endfor %}
+            </ul>
+          </div>
+        {% empty %}
+          <p class="text-xs text-base-content/40">No links found.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Owning torrents. Each can open another drawer. #}
+    <div>
+      <div class="text-xs font-semibold text-base-content/70 mb-2">
+        Torrents <span class="font-normal text-base-content/40">({{ torrents|length }})</span>
+      </div>
+      {% if torrents %}
+        <div class="flex flex-col gap-2">
+          {% for torrent in torrents %}
+            <div class="rounded-box border border-base-300 overflow-hidden">
+              {# Header with an arrow to open a drawer with more detail #}
+              <div class="bg-base-200/60 px-2 py-1 flex items-center justify-between gap-2">
+                {# TODO: Get torrent name and display that instead of the hash here #}
+                <span class="font-mono text-xs truncate min-w-0" title="{{ torrent.hash }}">{{ torrent.hash }}</span>
+                <div class="flex items-center gap-1 shrink-0">
+                  <span class="badge badge-ghost badge-xs">{{ torrent.state }}</span>
+                  <button type="button"
+                    class="btn btn-ghost btn-xs btn-square"
+                    aria-label="Open torrent detail"
+                    {# TODO: Replace with url route once built #}
+                    hx-get="/torrent/{{ torrent.pk }}/"
+                    hx-target="#drawer"
+                    hx-swap="innerHTML">
+                    <span class="size-4">{% include "theme/icons/chevron-right.svg" %}</span>
+                  </button>
+                </div>
+              </div>
+              <dl class="grid grid-cols-2 gap-x-3 gap-y-0.5 px-2 py-2 text-xs">
+                <div class="flex justify-between">
+                  <dt class="text-base-content/50">Ratio</dt>
+                  <dd class="font-mono">
+                    {{ torrent.ratio|floatformat:2 }}
+                  </dd>
+                </div>
+                <div class="flex justify-between">
+                  <dt class="text-base-content/50">Seeding</dt>
+                  <dd class="font-mono"
+                      title="Started on {{ torrent.completed_on|date:"DATETIME_FORMAT" }}">
+                    {{ torrent.seeding_time|duration }}
+                  </dd>
+                </div>
+                <div class="flex justify-between">
+                  <dt class="text-base-content/50">Requirements Met</dt>
+                  <dd>
+                    {% if torrent.seeding_met %}
+                      <span class="badge badge-success badge-xs">Yes</span>
+                    {% else %}
+                      <span class="badge badge-warning badge-xs">No</span>
+                    {% endif %}
+                  </dd>
+                </div>
+                <div class="flex justify-between">
+                  <dt class="text-base-content/50">
+                    {% if torrent.seeding_met %}
+                      <span {% if torrent.ratio >= config.seeding_min_ratio %} class="cursor-help" title="Only accounts for when seeding duration was met. Torrent may have reached ratio {{ config.seeding_min_ratio }} prior to this."{% endif %}>Met on</span>
+                    {% else %}
+                      Met by
+                    {% endif %}
+                  </dt>
+                  <dd class="font-mono"
+                      title="{{ torrent.seeding_end|date:"DATETIME_FORMAT"|default:"-" }}">
+                    {{ torrent.seeding_end|date:"DATE_FORMAT"|default:"-" }}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-xs text-base-content/40">Not part of any torrent.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>

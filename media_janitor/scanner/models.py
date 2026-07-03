@@ -283,11 +283,36 @@ class Torrent(models.Model):
     scan = models.ForeignKey(Scan, on_delete=models.CASCADE, related_name="torrents")
     hash = models.CharField(max_length=40)
     state = models.CharField(max_length=32)
+    name = models.TextField(help_text="Torrent name as reported by the torrent client")
+    category = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Torrent category in the torrent client",
+    )
+    tracker = models.TextField(
+        blank=True,
+        default="",
+        help_text="Currently-working tracker URL reported by the client",
+    )
+    private = models.BooleanField(
+        default=False, help_text="Whether the torrent is from a private tracker"
+    )
     ratio = models.FloatField()
     completed_on = models.DateTimeField(
         null=True,
         blank=True,
         help_text="When the torrent completed downloading and seeding started",
+    )
+    added_on = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the torrent was added to the client",
+    )
+    last_activity = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time the torrent had upload/download activity",
     )
 
     seeding_time = models.DurationField(
@@ -295,6 +320,9 @@ class Torrent(models.Model):
         blank=True,
         help_text="How long since the torrent started seeding (does not account for if "
         "the torrent was stopped)",
+    )
+    size = models.BigIntegerField(
+        default=0, help_text="Total size in bytes of the torrent's selected files"
     )
     content_path = models.TextField()
     save_path = models.TextField()

@@ -80,7 +80,12 @@ def make_torrent(scan: Scan, hash_: str = "a" * 40, **kwargs) -> Torrent:
     """
     defaults = {
         "state": "stalledUP",
+        "name": "Example Torrent",
+        "category": "radarr",
+        "tracker": "https://tracker.example/announce",
+        "private": True,
         "ratio": 2.0,
+        "size": 1024,
         "content_path": "torrents/example",
         "save_path": "torrents",
     }

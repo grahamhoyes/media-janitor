@@ -51,9 +51,18 @@ class TorrentSnapshot:
     # internal logic only.
     raw_state: str
 
+    name: str
+    category: str
+    tracker: str
+    private: bool
+
     ratio: float
     completed_on: datetime | None
+    added_on: datetime | None
+    last_activity: datetime | None
     seeding_time: timedelta | None
+    size: int
+    "Size in bytes"
     content_path: str  # share-relative
     save_path: str  # share-relative
     files: list[TorrentFile]

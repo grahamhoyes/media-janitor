@@ -300,10 +300,18 @@ class QBittorrentClient(DownloadClient):
             hash=t["hash"],
             state=self._normalize_state(raw_state),
             raw_state=raw_state,
+            name=t["name"],
+            category=t["category"],
+            tracker=t["tracker"],
+            # private may be absent before the torrent's metadata is fetched
+            private=t.get("private", False),
             ratio=t["ratio"],
             # NOTE: the API field is "completion_on" (epoch seconds).
             completed_on=self._epoch_to_datetime(t["completion_on"]),
+            added_on=self._epoch_to_datetime(t["added_on"]),
+            last_activity=self._epoch_to_datetime(t["last_activity"]),
             seeding_time=self._seconds_to_timedelta(t["seeding_time"]),
+            size=t["size"],
             content_path=content_path,
             save_path=save_path,
             files=files,

@@ -57,12 +57,19 @@ class TorrentDraft:
     """
     Normalized torrent state. Used internally only, not persisted.
     """
+    name: str
+    category: str
+    tracker: str
+    private: bool
     ratio: float
     completed_on: datetime | None
     """
     When the torrent completed downloading, ie when seeding started
     """
+    added_on: datetime | None
+    last_activity: datetime | None
     seeding_time: timedelta | None
+    size: int
     content_path: str
     save_path: str
     seeding_met: bool
@@ -222,9 +229,16 @@ def build_scan_model(
             hash=t.hash,
             state=t.raw_state,
             normalized_state=t.state,
+            name=t.name,
+            category=t.category,
+            tracker=t.tracker,
+            private=t.private,
             ratio=t.ratio,
             completed_on=t.completed_on,
+            added_on=t.added_on,
+            last_activity=t.last_activity,
             seeding_time=t.seeding_time,
+            size=t.size,
             content_path=t.content_path,
             save_path=t.save_path,
             seeding_met=seeding.met,

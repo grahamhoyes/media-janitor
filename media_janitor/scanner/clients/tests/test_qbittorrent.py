@@ -21,18 +21,32 @@ DATA_ROOT = "/data"
 SINGLE_FILE_TORRENT = {
     "hash": "aaaa",
     "state": "uploading",
+    "name": "Single File Torrent",
+    "category": "radarr",
+    "tracker": "https://tracker.example/announce",
+    "private": True,
     "ratio": 2.5,
     "completion_on": 1_700_000_000,
+    "added_on": 1_699_000_000,
+    "last_activity": 1_700_500_000,
     "seeding_time": 3600,
+    "size": 1000,
     "content_path": "/data/torrents/single/a.mkv",
     "save_path": "/data/torrents/single",
 }
 MULTI_FILE_TORRENT = {
     "hash": "bbbb",
     "state": "stoppedUP",
+    "name": "Multi File Torrent",
+    "category": "",
+    "tracker": "",
+    # private is intentionally omitted: metadata not yet fetched -> defaults to False
     "ratio": 0.3,
     "completion_on": 0,  # undefined -> None
+    "added_on": 0,  # undefined -> None
+    "last_activity": 0,  # undefined -> None
     "seeding_time": 0,  # undefined -> None
+    "size": 5000,
     "content_path": "/data/torrents/show",
     "save_path": "/data/torrents",
 }
@@ -80,9 +94,16 @@ async def test_gather_happy_path():
     assert single.hash == "aaaa"
     assert single.state == TorrentState.SEEDING
     assert single.raw_state == "uploading"
+    assert single.name == "Single File Torrent"
+    assert single.category == "radarr"
+    assert single.tracker == "https://tracker.example/announce"
+    assert single.private is True
     assert single.ratio == 2.5
     assert single.completed_on == datetime.fromtimestamp(1_700_000_000, tz=UTC)
+    assert single.added_on == datetime.fromtimestamp(1_699_000_000, tz=UTC)
+    assert single.last_activity == datetime.fromtimestamp(1_700_500_000, tz=UTC)
     assert single.seeding_time == timedelta(seconds=3600)
+    assert single.size == 1000
     assert single.content_path == "torrents/single/a.mkv"
     assert single.save_path == "torrents/single"
     assert len(single.files) == 1
@@ -94,8 +115,15 @@ async def test_gather_happy_path():
     assert multi.hash == "bbbb"
     assert multi.state == TorrentState.STOPPED
     assert multi.raw_state == "stoppedUP"
+    assert multi.name == "Multi File Torrent"
+    assert multi.category == ""
+    assert multi.tracker == ""
+    assert multi.private is False  # "private" key absent from the info entry
     assert multi.completed_on is None  # completion_on == 0
+    assert multi.added_on is None  # added_on == 0
+    assert multi.last_activity is None  # last_activity == 0
     assert multi.seeding_time is None  # seeding_time == 0
+    assert multi.size == 5000
     assert multi.content_path == "torrents/show"
     assert multi.save_path == "torrents"
     assert [f.path for f in multi.files] == [
@@ -248,9 +276,16 @@ async def test_torrent_outside_data_root_skipped():
     outside_torrent = {
         "hash": "cccc",
         "state": "uploading",
+        "name": "Outside Torrent",
+        "category": "sonarr",
+        "tracker": "https://tracker.example/announce",
+        "private": True,
         "ratio": 1.0,
         "completion_on": 1_700_000_000,
+        "added_on": 1_699_000_000,
+        "last_activity": 1_700_500_000,
         "seeding_time": 3600,
+        "size": 1000,
         "content_path": "/other/torrents/x.mkv",
         "save_path": "/other/torrents",
     }

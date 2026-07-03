@@ -1,4 +1,5 @@
 from datetime import timedelta
+from urllib.parse import urlparse
 
 from django.db import models
 
@@ -347,6 +348,13 @@ class Torrent(models.Model):
 
     def __str__(self) -> str:
         return f"Torrent {self.hash}"
+
+    def tracker_host(self) -> str:
+        """
+        Return just the scheme and hostname of the tracker (path removed)
+        """
+        parsed = urlparse(self.tracker)
+        return f"{parsed.scheme}://{parsed.netloc}"
 
 
 class BlobTorrent(models.Model):

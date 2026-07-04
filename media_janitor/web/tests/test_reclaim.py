@@ -47,6 +47,12 @@ def test_normal_request_returns_full_page(logged_in_client):
     assert "<table" in content
 
 
+def _showing(start, end, total):
+    """Rendered 'Showing X to Y of N' text, with each number wrapped in its emphasis span"""
+    span = '<span class="font-medium">{}</span>'
+    return f"Showing {span.format(start)} to {span.format(end)} of {span.format(total)}"
+
+
 @pytest.mark.django_db
 def test_pagination_splits_rows(logged_in_client):
     make_complete_scan()
@@ -54,7 +60,7 @@ def test_pagination_splits_rows(logged_in_client):
     page1 = logged_in_client.get(reverse("reclaim"), {"page": 1, "page_size": 2})
     sizes1 = [blob.size for blob in page1.context["page_obj"]]
     assert sizes1 == [6000, 4000]
-    assert "Showing 1 to 2 of 5" in page1.content.decode()
+    assert _showing(1, 2, 5) in page1.content.decode()
 
     page2 = logged_in_client.get(reverse("reclaim"), {"page": 2, "page_size": 2})
     sizes2 = [blob.size for blob in page2.context["page_obj"]]
@@ -85,14 +91,14 @@ def test_invalid_params_do_not_500(logged_in_client):
     assert response.status_code == 200
 
     content = response.content.decode()
-    # Last page, page size returns to the default of 100
-    assert "Showing 101 to 155 of 155" in content
-    assert len(response.context["page_obj"].object_list) == 55
+    # Last page, page size returns to the default of 50
+    assert _showing(151, 155, 155) in content
+    assert len(response.context["page_obj"].object_list) == 5
 
     response = logged_in_client.get(reverse("reclaim"), {"page": "abc", "page_size": "xyz"})
     content = response.content.decode()
     assert response.status_code == 200
-    assert "Showing 1 to 100 of 155" in content
+    assert _showing(1, 50, 155) in content
     assert response.context["page_obj"].number == 1
 
 

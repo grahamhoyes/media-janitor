@@ -28,7 +28,7 @@ class ReclaimListView(LoginRequiredMixin, View):
     request, so filter/sort/page controls can swap the table alone.
     """
 
-    DEFAULT_PAGE_SIZE = 100
+    DEFAULT_PAGE_SIZE = 50
 
     # Sortable columns, mapped to the queryset field (or annotation) they order by. The
     # annotation-backed keys (name, status) get their annotation attached only when that

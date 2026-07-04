@@ -114,6 +114,10 @@ def headline_band(scan: Scan) -> dict[str, object]:
     }
 
 
+# Preset choices offered by the pagination control's rows-per-page selector
+PAGE_SIZE_OPTIONS = (10, 25, 50, 100, 200)
+
+
 @register.inclusion_tag("media_janitor/fragments/pagination_controls.html")
 def pagination_controls(
     page: Page,
@@ -137,10 +141,19 @@ def pagination_controls(
         else:
             items.append({"number": entry, "current": entry == page.number})
 
+    # Fold the active page size into the preset list so the select always reflects reality,
+    # even if the request carried a custom page_size.
+    current_page_size = page.paginator.per_page
+    page_sizes = sorted(set(PAGE_SIZE_OPTIONS) | {current_page_size})
+    page_size_options = [
+        {"value": size, "selected": size == current_page_size} for size in page_sizes
+    ]
+
     return {
         "page": page,
         "hx_target": hx_target,
         "items": items,
+        "page_size_options": page_size_options,
         "prev_number": page.previous_page_number() if page.has_previous() else None,
         "next_number": page.next_page_number() if page.has_next() else None,
     }

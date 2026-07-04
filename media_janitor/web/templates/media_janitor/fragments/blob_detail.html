@@ -149,13 +149,14 @@
                           is keyboard-focused, kept faintly visible on touch (no hover).
                         {% endcomment %}
                         <button type="button"
-                                class="btn btn-ghost btn-xs btn-square opacity-0 max-sm:opacity-60 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-                                data-path="{{ link.path }}"
-                                x-data="{ copied: false }"
-                                :aria-label="copied ? 'Path copied' : 'Copy path'"
-                                @click.stop="navigator.clipboard && navigator.clipboard.writeText($el.dataset.path).then(() => { copied = true; setTimeout(() => copied = false, 2000) }).catch(() => {})">
-                          <span class="size-4" x-show="!copied" title="Copy path">{% include "theme/icons/clipboard-document.svg" %}</span>
-                          <span class="size-4 text-success" x-show="copied" x-cloak>
+                                class="btn btn-ghost btn-xs btn-square group/copy opacity-0 max-sm:opacity-60 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                x-copy
+                                data-copy="{{ link.path }}"
+                                aria-label="Copy path">
+                          <span class="size-4 group-data-copied/copy:hidden" title="Copy path">
+                            {% include "theme/icons/clipboard-document.svg" %}
+                          </span>
+                          <span class="size-4 text-success hidden group-data-copied/copy:inline-block">
                             {% include "theme/icons/clipboard-document-check.svg" %}
                           </span>
                         </button>
@@ -194,13 +195,14 @@
                   </div>
                   {# Copy the torrent name so it can be searched for in qBittorrent #}
                   <button type="button"
-                          class="btn btn-ghost btn-xs btn-square shrink-0 opacity-0 max-sm:opacity-60 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-                          data-name="{{ torrent.name }}"
-                          x-data="{ copied: false }"
-                          :aria-label="copied ? 'Name copied' : 'Copy name'"
-                          @click.stop="navigator.clipboard && navigator.clipboard.writeText($el.dataset.name).then(() => { copied = true; setTimeout(() => copied = false, 2000) }).catch(() => {})">
-                    <span class="size-4" x-show="!copied" title="Copy name">{% include "theme/icons/clipboard-document.svg" %}</span>
-                    <span class="size-4 text-success" x-show="copied" x-cloak>
+                          class="btn btn-ghost btn-xs btn-square group/copy shrink-0 opacity-0 max-sm:opacity-60 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                          x-copy
+                          data-copy="{{ torrent.name }}"
+                          aria-label="Copy name">
+                    <span class="size-4 group-data-copied/copy:hidden" title="Copy name">
+                      {% include "theme/icons/clipboard-document.svg" %}
+                    </span>
+                    <span class="size-4 text-success hidden group-data-copied/copy:inline-block">
                       {% include "theme/icons/clipboard-document-check.svg" %}
                     </span>
                   </button>
@@ -275,13 +277,14 @@
                       title="{{ torrent.hash }}">
                     <p class="font-mono truncate">{{ torrent.hash }}</p>
                     <button type="button"
-                            class="btn btn-ghost btn-xs btn-square shrink-0 sm:hidden group-hover:inline-flex focus-visible:inline-flex"
-                            data-hash="{{ torrent.hash }}"
-                            x-data="{ copied: false }"
-                            :aria-label="copied ? 'Hash copied' : 'Copy hash'"
-                            @click.stop="navigator.clipboard && navigator.clipboard.writeText($el.dataset.hash).then(() => { copied = true; setTimeout(() => copied = false, 2000) }).catch(() => {})">
-                      <span class="size-4" x-show="!copied" title="Copy hash">{% include "theme/icons/clipboard-document.svg" %}</span>
-                      <span class="size-4 text-success" x-show="copied" x-cloak>
+                            class="btn btn-ghost btn-xs btn-square group/copy shrink-0 sm:hidden group-hover:inline-flex focus-visible:inline-flex"
+                            x-copy
+                            data-copy="{{ torrent.hash }}"
+                            aria-label="Copy hash">
+                      <span class="size-4 group-data-copied/copy:hidden" title="Copy hash">
+                        {% include "theme/icons/clipboard-document.svg" %}
+                      </span>
+                      <span class="size-4 text-success hidden group-data-copied/copy:inline-block">
                         {% include "theme/icons/clipboard-document-check.svg" %}
                       </span>
                     </button>
@@ -293,13 +296,14 @@
                       title="{{ torrent.tracker }}">
                     <p class="font-mono truncate">{{ torrent.tracker_host }}</p>
                     <button type="button"
-                            class="btn btn-ghost btn-xs btn-square shrink-0 sm:hidden group-hover:inline-flex focus-visible:inline-flex"
-                            data-tracker="{{ torrent.tracker }}"
-                            x-data="{ copied: false }"
-                            :aria-label="copied ? 'Tracker copied' : 'Copy tracker'"
-                            @click.stop="navigator.clipboard && navigator.clipboard.writeText($el.dataset.tracker).then(() => { copied = true; setTimeout(() => copied = false, 2000) }).catch(() => {})">
-                      <span class="size-4" x-show="!copied" title="Copy tracker">{% include "theme/icons/clipboard-document.svg" %}</span>
-                      <span class="size-4 text-success" x-show="copied" x-cloak>
+                            class="btn btn-ghost btn-xs btn-square group/copy shrink-0 sm:hidden group-hover:inline-flex focus-visible:inline-flex"
+                            x-copy
+                            data-copy="{{ torrent.tracker }}"
+                            aria-label="Copy tracker">
+                      <span class="size-4 group-data-copied/copy:hidden" title="Copy tracker">
+                        {% include "theme/icons/clipboard-document.svg" %}
+                      </span>
+                      <span class="size-4 text-success hidden group-data-copied/copy:inline-block">
                         {% include "theme/icons/clipboard-document-check.svg" %}
                       </span>
                     </button>

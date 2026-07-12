@@ -174,6 +174,8 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
                 Torrent(
                     scan=scan,
                     hash=t.hash,
+                    # TODO: persist t.normalized_state here and keep the raw string in a separate
+                    #  raw_state field
                     state=t.state,
                     name=t.name,
                     category=t.category,

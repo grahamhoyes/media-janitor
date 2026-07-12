@@ -9,7 +9,8 @@
     - dir: sort direction (asc/desc)
     - sort_columns: dict of column name to display.SortColumn, which tells us what to do
                     when the column is clicked
-    - status_chips / kind_chips / flag_chips: lists of display.FilterChip for the filter bar
+    - status_chips / kind_chips / flag_chips / torrent_chips: lists of display.FilterChip
+                    for the filter bar
     - q: the active text search term
     - any_filter: whether any filter is active
     - matching_count / total_count: filtered and scan-wide blob counts
@@ -21,7 +22,7 @@
     {# Status chips (multi-select, OR within), as a segmented button group #}
     <div class="flex items-center gap-2">
       <span class="text-base-content/50 cursor-help"
-            title="ORed together (shows any of the selected statuses)">Status</span>
+            title="File status (ORed: shows any of the selected statuses)">Status</span>
       <div class="join">
         {% for chip in status_chips %}
           {% querystring status=chip.next_values page=None as chip_url %}
@@ -38,7 +39,7 @@
     {# Kind chips (multi-select, OR within) #}
     <div class="flex items-center gap-2">
       <span class="text-base-content/50 cursor-help"
-            title="ORed together (shows any of the selected file kinds)">Kind</span>
+            title="File kind (ORed: shows any of the selected kinds)">Kind</span>
       <div class="join">
         {% for chip in kind_chips %}
           {% querystring kind=chip.next_values page=None as chip_url %}
@@ -55,10 +56,27 @@
     {# Flag toggles (AND within: each selected flag narrows further) #}
     <div class="flex items-center gap-2">
       <span class="text-base-content/50 cursor-help"
-            title="ANDed together (shows blobs with all of the selected flags)">Flags</span>
+            title="File flags (ANDed: shows files with all of the selected flags)">Flags</span>
       <div class="join">
         {% for chip in flag_chips %}
           {% querystring flag=chip.next_values page=None as chip_url %}
+          <a class="btn btn-xs join-item {% if chip.active %}{{ chip.btn }}{% else %}btn-soft{% endif %}"
+             href="{{ chip_url }}"
+             hx-get="{{ chip_url }}"
+             hx-target="#reclaim-table"
+             hx-swap="innerHTML"
+             hx-push-url="true">{{ chip.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Torrent tracked/untracked chips (both or neither selected means no narrowing) #}
+    <div class="flex items-center gap-2">
+      <span class="text-base-content/50 cursor-help"
+            title="Whether the file belongs to a torrent (ORed: shows files of either selected option)">Torrent</span>
+      <div class="join">
+        {% for chip in torrent_chips %}
+          {% querystring torrent=chip.next_values page=None as chip_url %}
           <a class="btn btn-xs join-item {% if chip.active %}{{ chip.btn }}{% else %}btn-soft{% endif %}"
              href="{{ chip_url }}"
              hx-get="{{ chip_url }}"
@@ -89,7 +107,7 @@
     </label>
 
     {% if any_filter %}
-      {% querystring status=None kind=None flag=None q=None page=None as clear_url %}
+      {% querystring status=None kind=None flag=None torrent=None q=None page=None as clear_url %}
       <a class="btn btn-sm btn-soft btn-error"
          href="{{ clear_url }}"
          hx-get="{{ clear_url }}"
@@ -110,87 +128,10 @@
 
 <div class="overflow-x-auto">
   <table class="table table-xs w-full table-fixed min-w-175">
-    <thead>
-      <tr class="bg-base-200/50 text-xs">
-        {% sort_header sort_columns.status "Status" hx_target="#reclaim-table" th_class="w-34" %}
-        {% sort_header sort_columns.name "Name / Path" hx_target="#reclaim-table" %}
-        <th class="w-32">Flags</th>
-        <th class="w-18">Kind</th>
-        {% sort_header sort_columns.size "Size" hx_target="#reclaim-table" th_class="w-22" %}
-        <th class="w-22 text-nowrap">Seeding met?</th>
-        {# Action column #}
-        <th class="w-10"></th>
-      </tr>
-    </thead>
+    {% include "media_janitor/fragments/blob_thead.html" with sort_columns=sort_columns hx_target="#reclaim-table" %}
     <tbody>
       {% for blob in page_obj %}
-        <tr class="hover:bg-base-200/50 transition-colors cursor-pointer"
-            hx-get="{% url 'blob_detail' blob.pk %}"
-            hx-target="#drawer"
-            hx-swap="innerHTML">
-          {# Status #}
-          <td>{% status_badge blob %}</td>
-
-          {# Name / path #}
-          <td class="min-w-0 overflow-hidden">
-            <div x-data="{ expanded: false }">
-              {% for link in blob.sorted_links %}
-                <div {% if not forloop.first %}class="mt-1" x-show="expanded" x-cloak{% endif %}>
-                  <div class="font-mono text-xs truncate leading-tight">
-                    <span class="font-semibold">{{ link.name }}</span>
-
-                    {# Button to expand/hide the rest of the links, on the first item #}
-                    {% if blob.sorted_links|length > 1 and forloop.first %}
-                      <button type="button"
-                              class="text-base-content/70 hover:text-base-content cursor-pointer"
-                              @click.stop="expanded = !expanded"
-                              x-text="!expanded ? '+{{ blob.sorted_links|length|add:"-1" }} more' : 'Show less'">
-                      </button>
-                    {% endif %}
-                  </div>
-                  <div class="text-xs text-base-content/40 font-mono truncate leading-tight mt-0.5"
-                       title="{{ link.path }}">{{ link.path }}</div>
-                </div>
-              {% endfor %}
-            </div>
-          </td>
-
-          {# Flags #}
-          <td>
-            <div class="flex flex-wrap gap-1">
-              {% for label, tooltip in blob|active_flags %}
-                <span class="badge badge-outline badge-xs cursor-help"
-                      title="{{ tooltip }}">{{ label }}</span>
-              {% endfor %}
-            </div>
-          </td>
-
-          {# Kind #}
-          <td class="text-base-content/50">{{ blob.get_kind_display }}</td>
-
-          {# Size #}
-          <td class="text-right font-mono whitespace-nowrap">
-            {{ blob.size|binsize }}
-            {% if blob.links_outside_scope %}<span class="text-base-content/40">*</span>{% endif %}
-          </td>
-
-          {# Seeding requirements met #}
-          <td class="whitespace-nowrap">
-            {% if blob.seeding_met %}
-              <span class="badge badge-success badge-xs">Yes</span>
-            {% elif blob.seeding_end %}
-              <span class="badge badge-warning badge-xs"
-                    title="{{ blob.seeding_end|date:"DATETIME_FORMAT" }}">{{ blob.seeding_end|date:"DATE_FORMAT" }}</span>
-            {% elif not blob.torrent_tracked %}
-              <span class="badge badge-secondary badge-xs">No torrent</span>
-            {% else %}
-              -
-            {% endif %}
-          </td>
-
-          {# Actions TODO: per-row select / add to bin controls #}
-          <td></td>
-        </tr>
+        {% include "media_janitor/fragments/blob_row.html" %}
       {% empty %}
         <tr>
           <td colspan="7" class="text-center text-base-content/60 py-6 text-xs">

@@ -13,6 +13,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 
+# TODO: relocate this to scanner/models.py so it can be used as a choice field, and
+#  split IN_FLIGHT into more specific categories (DOWNLOADING, CHECKING, MOVING, QUEUED)
+#  and a dedicated ERROR state. Add an `is_active` method so classify.py can keep its
+#  current semantics.
 class TorrentState(enum.Enum):
     """
     Torrent state

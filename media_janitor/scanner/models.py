@@ -193,7 +193,9 @@ class Blob(models.Model):
     )
 
     torrent_tracked = models.BooleanField(
-        default=False, help_text="Whether this blob is part of a torrent in qBittorrent"
+        # TODO: Remove qBittorrent from help text
+        default=False,
+        help_text="Whether this blob is part of a torrent in qBittorrent",
     )
     seeding_met = models.BooleanField(
         null=True,
@@ -278,11 +280,15 @@ class Link(models.Model):
         return f"Link {self.path}"
 
 
+# TODO: This should be agnostic of the download client, so don't mention qBittorrent
+#  in the docstring.
 class Torrent(models.Model):
     """Per-scan snapshot of a qBittorrent torrent"""
 
     scan = models.ForeignKey(Scan, on_delete=models.CASCADE, related_name="torrents")
     hash = models.CharField(max_length=40)
+    # TODO: Should hold normalized TorrentState, and a separate raw_state for what
+    #  is in this field currently.
     state = models.CharField(max_length=32)
     name = models.TextField(help_text="Torrent name as reported by the torrent client")
     category = models.CharField(

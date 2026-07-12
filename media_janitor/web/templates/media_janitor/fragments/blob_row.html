@@ -1,0 +1,73 @@
+{% load janitor %}
+{% comment %}
+  One blob table row, used by the reclaim table and to show blobs within a torrent.
+
+  Context:
+    - blob: a Blob
+{% endcomment %}
+<tr class="hover:bg-base-200/50 transition-colors cursor-pointer"
+    hx-get="{% url 'blob_detail' blob.pk %}"
+    hx-target="#drawer"
+    hx-swap="innerHTML">
+  {# Status #}
+  <td>{% status_badge blob %}</td>
+
+  {# Name / path #}
+  <td class="min-w-0 overflow-hidden">
+    <div x-data="{ expanded: false }">
+      {% for link in blob.links.all %}
+        <div {% if not forloop.first %}class="mt-1" x-show="expanded" x-cloak{% endif %}>
+          <div class="font-mono text-xs truncate leading-tight">
+            <span class="font-semibold">{{ link.name }}</span>
+
+            {# Button to expand/hide the rest of the links, on the first item #}
+            {% if blob.links.all|length > 1 and forloop.first %}
+              <button type="button"
+                      class="text-base-content/70 hover:text-base-content cursor-pointer"
+                      @click.stop="expanded = !expanded"
+                      x-text="!expanded ? '+{{ blob.links.all|length|add:"-1" }} more' : 'Show less'"></button>
+            {% endif %}
+          </div>
+          <div class="text-xs text-base-content/40 font-mono truncate leading-tight mt-0.5"
+               title="{{ link.path }}">{{ link.path }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </td>
+
+  {# Flags #}
+  <td>
+    <div class="flex flex-wrap gap-1">
+      {% for label, tooltip in blob|active_flags %}
+        <span class="badge badge-outline badge-xs cursor-help"
+              title="{{ tooltip }}">{{ label }}</span>
+      {% endfor %}
+    </div>
+  </td>
+
+  {# Kind #}
+  <td class="text-base-content/50">{{ blob.get_kind_display }}</td>
+
+  {# Size #}
+  <td class="text-right font-mono whitespace-nowrap">
+    {{ blob.size|binsize }}
+    {% if blob.links_outside_scope %}<span class="text-base-content/40">*</span>{% endif %}
+  </td>
+
+  {# Seeding requirements met #}
+  <td class="whitespace-nowrap">
+    {% if blob.seeding_met %}
+      <span class="badge badge-success badge-xs">Yes</span>
+    {% elif blob.seeding_end %}
+      <span class="badge badge-warning badge-xs"
+            title="{{ blob.seeding_end|date:"DATETIME_FORMAT" }}">{{ blob.seeding_end|date:"DATE_FORMAT" }}</span>
+    {% elif not blob.torrent_tracked %}
+      <span class="badge badge-secondary badge-xs">No torrent</span>
+    {% else %}
+      -
+    {% endif %}
+  </td>
+
+  {# Actions TODO: per-row select / add to bin controls #}
+  <td></td>
+</tr>

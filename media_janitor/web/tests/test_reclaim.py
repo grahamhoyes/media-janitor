@@ -312,7 +312,7 @@ def test_extra_link_indicator(logged_in_client):
 
     by_size = {blob.size: blob for blob in response.context["page_obj"]}
     # Display link is the lowest path
-    assert by_size[5000].sorted_links[0].path == "media/a/one.mkv"
+    assert by_size[5000].links.first().path == "media/a/one.mkv"
 
 
 @pytest.mark.django_db
@@ -359,7 +359,7 @@ def test_seeding_column_untracked_shows_dash(logged_in_client):
     assert "Yes" not in content
 
 
-# --- Filtering (T7) ---
+# --- Filtering ---
 
 
 def _sizes(response):
@@ -536,3 +536,73 @@ def test_filtered_empty_shows_filter_message(logged_in_client):
     content = response.content.decode()
     assert "No blobs match the current filters" in content
     assert "This scan has no blobs" not in content
+
+
+# --- Torrent tracked/untracked chips ---
+
+
+@pytest.mark.django_db
+def test_filter_torrent_tracked(logged_in_client):
+    make_complete_scan()
+    # The reclaimable, linked_externally, and seeding_hold blobs are torrent tracked
+    response = logged_in_client.get(reverse("reclaim"), {"torrent": "tracked"})
+    assert _sizes(response) == [6000, 4000, 3000]
+
+
+@pytest.mark.django_db
+def test_filter_torrent_untracked(logged_in_client):
+    make_complete_scan()
+    # The in_library and in_progress blobs have no owning torrent
+    response = logged_in_client.get(reverse("reclaim"), {"torrent": "untracked"})
+    assert _sizes(response) == [2000, 1000]
+
+
+@pytest.mark.django_db
+def test_filter_torrent_both_selected_does_not_narrow(logged_in_client):
+    make_complete_scan()
+    response = logged_in_client.get(reverse("reclaim"), {"torrent": ["tracked", "untracked"]})
+    assert _sizes(response) == [6000, 4000, 3000, 2000, 1000]
+    # Both chips selected still counts as an active filter (clear control shows)
+    assert response.context["any_filter"] is True
+
+
+@pytest.mark.django_db
+def test_filter_torrent_combines_with_status(logged_in_client):
+    make_complete_scan()
+    # AND across types: reclaimable AND untracked matches nothing (the reclaimable blob is
+    # tracked); reclaimable AND tracked matches it.
+    empty = logged_in_client.get(
+        reverse("reclaim"), {"status": "reclaimable", "torrent": "untracked"}
+    )
+    assert _sizes(empty) == []
+
+    match = logged_in_client.get(
+        reverse("reclaim"), {"status": "reclaimable", "torrent": "tracked"}
+    )
+    assert _sizes(match) == [6000]
+
+
+@pytest.mark.django_db
+def test_invalid_torrent_filter_values_are_ignored(logged_in_client):
+    make_complete_scan()
+    response = logged_in_client.get(reverse("reclaim"), {"torrent": "bogus"})
+    assert response.context["any_filter"] is False
+    assert _sizes(response) == [6000, 4000, 3000, 2000, 1000]
+
+
+@pytest.mark.django_db
+def test_torrent_chip_preserves_sort_and_resets_page(logged_in_client):
+    make_complete_scan()
+    response = logged_in_client.get(reverse("reclaim") + "?page=2&page_size=2&sort=name&dir=asc")
+    content = response.content.decode()
+    # The Tracked chip link keeps sort/dir/page_size, drops page, and adds torrent=tracked
+    assert 'href="?page_size=2&amp;sort=name&amp;dir=asc&amp;torrent=tracked"' in content
+
+
+@pytest.mark.django_db
+def test_clear_filters_link_drops_torrent_param(logged_in_client):
+    make_complete_scan()
+    response = logged_in_client.get(reverse("reclaim") + "?torrent=tracked&sort=size&dir=asc")
+    content = response.content.decode()
+    # The clear link strips the torrent param but preserves sort and dir
+    assert 'href="?sort=size&amp;dir=asc"' in content

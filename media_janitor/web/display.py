@@ -73,6 +73,57 @@ FLAG_VOCAB: dict[str, dict[str, str]] = {
 }
 
 
+# TODO: Once Torrent.state stores a normalized TorrentState, key this off enum
+#  members instead so we don't rely on download client semantics.
+# qBittorrent torrent states grouped into a display label and badge class, expanded to a
+# per-state lookup below. States not listed here (stopped, queued, checking, moving, or
+# anything new) fall back to the raw state string in a muted badge.
+# The next line is a hack to make sure tailwind picks up these class names.
+# class="badge-error badge-ghost"
+class _TorrentStateGroup(TypedDict):
+    """A set of qBittorrent states sharing one display label and badge class"""
+
+    states: tuple[str, ...]
+    label: str
+    badge: str
+
+
+_TORRENT_STATE_GROUPS: list[_TorrentStateGroup] = [
+    {
+        "states": ("uploading", "stalledUP", "forcedUP"),
+        "label": "Seeding",
+        "badge": "badge-success",
+    },
+    {
+        "states": ("downloading", "metaDL", "forcedMetaDL", "stalledDL", "forcedDL", "allocating"),
+        "label": "Downloading",
+        "badge": "badge-info",
+    },
+    {
+        "states": ("error", "missingFiles"),
+        "label": "Error",
+        "badge": "badge-error",
+    },
+]
+
+TORRENT_STATE_VOCAB: dict[str, dict[str, str]] = {
+    state: {"label": group["label"], "badge": group["badge"]}
+    for group in _TORRENT_STATE_GROUPS
+    for state in group["states"]
+}
+
+
+def torrent_state_badge(state: str) -> dict[str, str]:
+    """
+    Return the label and badge class for a qBittorrent torrent state
+
+    Unrecognized states render as the raw state string in a muted badge-ghost.
+
+    :param state: the torrent state string reported by the client
+    """
+    return TORRENT_STATE_VOCAB.get(state, {"label": state, "badge": "badge-ghost"})
+
+
 # A one-line explanation of why a blob has its status, shown in the detail drawer
 STATUS_REASON: dict[str, str] = {
     Blob.Status.RECLAIMABLE: (

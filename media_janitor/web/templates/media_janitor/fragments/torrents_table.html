@@ -1,0 +1,161 @@
+{% load janitor %}
+{% comment %}
+  Torrents list table with search and pagination. Rendered standalone on an HTMX request
+  and embedded in torrents.html on a full page load, so it must carry no page chrome.
+
+  Each torrent renders as its own tbody holding the torrent row and a hidden detail row.
+  Alpine tracks whether the detail row is visible. The expand control toggles it and, on
+  the first open only, lazily loads the torrent's blob rows into the detail cell with HTMX.
+
+  Context:
+    - page_obj: the paginator Page instance of annotated Torrents (blob_count,
+                fully_reclaimable)
+    - sort: sort key (column)
+    - dir: sort direction (asc/desc)
+    - sort_columns: dict of column name to display.SortColumn, which tells us what to do
+                    when the column is clicked
+    - q: the active text search term
+    - matching_count / total_count: searched and scan-wide torrent counts
+{% endcomment %}
+
+{# Search bar. Lives inside the fragment so its state and count re-render on every swap. #}
+<div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 border-b border-base-300 text-xs">
+  {# Text search over the torrent name, debounced. HTMX appends the live q value. #}
+  <label class="input input-sm w-64 items-center">
+    <span class="inline-flex items-center size-4 opacity-50">{% include "theme/icons/magnifying-glass.svg" %}</span>
+    {# ID is required so HTMX restores focus after a debounced automatic search #}
+    <input id="torrents-search"
+           type="search"
+           name="q"
+           value="{{ q }}"
+           placeholder="Search torrent name"
+           class="grow"
+           hx-get="{% querystring q=None page=None %}"
+           hx-trigger="input changed delay:300ms, search"
+           hx-target="#torrents-table"
+           hx-swap="innerHTML"
+           hx-push-url="true">
+  </label>
+
+  {% if q %}
+    {% querystring q=None page=None as clear_url %}
+    <a class="btn btn-sm btn-soft btn-error"
+       href="{{ clear_url }}"
+       hx-get="{{ clear_url }}"
+       hx-target="#torrents-table"
+       hx-swap="innerHTML"
+       hx-push-url="true">Clear search</a>
+  {% endif %}
+
+  <span class="text-base-content/60">
+    {% if q %}
+      <span class="font-medium text-base-content">{{ matching_count }}</span> matching, filtered from {{ total_count }} total
+    {% else %}
+      <span class="font-medium text-base-content">{{ total_count }}</span> total
+    {% endif %}
+  </span>
+</div>
+
+<div class="overflow-x-auto">
+  <table class="table table-xs w-full table-fixed min-w-175">
+    <thead>
+      <tr class="bg-base-200/50 text-xs">
+        {# Expand column #}
+        <th class="w-8"></th>
+        {% sort_header sort_columns.name "Name" hx_target="#torrents-table" %}
+        <th class="w-26">Seeding</th>
+        <th class="w-14">Blobs</th>
+        {% sort_header sort_columns.size "Size" hx_target="#torrents-table" th_class="w-22" %}
+        {% sort_header sort_columns.reclaimable "Reclaimable" hx_target="#torrents-table" th_class="w-30" %}
+        <th class="w-40">Markers</th>
+        {# Action column #}
+        <th class="w-10"></th>
+      </tr>
+    </thead>
+    {% for torrent in page_obj %}
+      <tbody x-data="{ open: false }">
+        {# Torrent row. TODO: hx-get /torrent/<pk>/ into #drawer #}
+        <tr class="hover:bg-base-200/50 transition-colors">
+          {# Expand control: toggles visibility, fetches the blob rows on first open only #}
+          <td>
+            <button type="button"
+                    class="btn btn-ghost btn-xs btn-square"
+                    aria-label="Expand torrent blobs"
+                    @click="open = !open"
+                    hx-get="{% url 'torrent_blobs' torrent.pk %}"
+                    hx-trigger="click once"
+                    hx-target="#torrent-blobs-{{ torrent.pk }}"
+                    hx-swap="innerHTML">
+              <span class="size-3 transition-transform" :class="open && 'rotate-90'">
+                {% include "theme/icons/chevron-right.svg" %}
+              </span>
+            </button>
+          </td>
+
+          {# Name #}
+          <td class="min-w-0 overflow-hidden">
+            <span class="font-semibold truncate block" title="{{ torrent.name }}">{{ torrent.name }}</span>
+          </td>
+
+          {# Seeding state #}
+          <td>{% seeding_badge torrent %}</td>
+
+          {# Blob count #}
+          <td class="font-mono">{{ torrent.blob_count }}</td>
+
+          {# Size #}
+          <td class="text-right font-mono whitespace-nowrap">{{ torrent.size|binsize }}</td>
+
+          {# Reclaimable if removed #}
+          <td class="text-right font-mono whitespace-nowrap">{{ torrent.bytes_reclaimable_if_removed|binsize }}</td>
+
+          {# Markers #}
+          {% comment %}
+          TODO: replace these with a single badge for a new scan-time Torrent.reclaim_state
+           (full/partial/none).
+          {% endcomment %}
+          <td>
+            <div class="flex flex-wrap gap-1">
+              {% if torrent.fully_reclaimable %}
+                <span class="badge badge-success badge-outline badge-xs cursor-help whitespace-nowrap"
+                      title="Every blob of this torrent can be reclaimed">Fully Reclaimable</span>
+              {% endif %}
+              {% if torrent.partial_torrent %}
+                <span class="badge badge-outline badge-xs cursor-help whitespace-nowrap"
+                      title="Owning torrent has blobs of mixed status">Partial Torrent</span>
+              {% endif %}
+            </div>
+          </td>
+
+          {# Actions TODO: remove whole torrent control #}
+          <td></td>
+        </tr>
+
+        {# Hidden detail row: filled once by the expand control's lazy hx-get #}
+        <tr x-show="open" x-cloak>
+          <td colspan="8" class="p-0" id="torrent-blobs-{{ torrent.pk }}">
+            <div class="text-center text-base-content/60 py-4 text-xs">Loading...</div>
+          </td>
+        </tr>
+      </tbody>
+    {% empty %}
+      <tbody>
+        <tr>
+          <td colspan="8" class="text-center text-base-content/60 py-6 text-xs">
+            {% if q %}
+              No torrents match the current search
+            {% else %}
+              This scan has no torrents
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    {% endfor %}
+  </table>
+</div>
+
+{% if page_obj.paginator.count %}
+  <div class="flex items-baseline justify-between gap-4 px-4 py-2 border-t border-base-300">
+    {% pagination_controls page_obj hx_target="#torrents-table" %}
+  </div>
+{% endif %}

@@ -1,0 +1,22 @@
+{% comment %}
+  Expanded blob rows for one torrent on the torrents page, loaded lazily into the row's
+  detail cell on first expand. A nested table so the rows are identical to the reclaim
+  list's, with a plain header (no sort controls).
+
+  Context:
+    - blobs: the torrent's blobs, size desc
+{% endcomment %}
+<div class="overflow-x-auto bg-base-200/25 border-y border-base-300">
+  <table class="table table-xs w-full table-fixed min-w-175">
+    {% include "media_janitor/fragments/blob_thead.html" with sort_columns=None hx_target=None tr_class="text-xs text-base-content/50" %}
+    <tbody>
+      {% for blob in blobs %}
+        {% include "media_janitor/fragments/blob_row.html" %}
+      {% empty %}
+        <tr>
+          <td colspan="7" class="text-center text-base-content/60 py-4 text-xs">This torrent has no blobs in the scan</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

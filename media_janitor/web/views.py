@@ -1,14 +1,27 @@
+from typing import ClassVar
+
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
-from django.db.models import Case, IntegerField, OuterRef, QuerySet, Subquery, Value, When
+from django.db.models import (
+    Case,
+    Count,
+    Exists,
+    IntegerField,
+    OuterRef,
+    Prefetch,
+    QuerySet,
+    Subquery,
+    Value,
+    When,
+)
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.generic import View
 from django_htmx.middleware import HtmxDetails
 
-from scanner.models import Blob, Config, Link, Scan
+from scanner.models import Blob, Config, Link, Scan, Torrent
 from web import display, filters
 from web.display import SortColumn
 from web.filters import FilterState
@@ -20,96 +33,20 @@ class HtmxHttpRequest(HttpRequest):
     htmx: HtmxDetails
 
 
-class ReclaimListView(LoginRequiredMixin, View):
+class SortedListView(LoginRequiredMixin, View):
     """
-    Dense table of the current scan's blobs
+    Shared sort and page-size query param machinery for paginated list views
 
-    Returns the full page on a normal request and only the table fragment on an HTMX
-    request, so filter/sort/page controls can swap the table alone.
+    Subclasses define SORT_FIELDS (sort key to queryset field/annotation), DEFAULT_SORT,
+    and SORT_DEFAULT_DIR (per-column first-click direction).
     """
 
     DEFAULT_PAGE_SIZE = 50
 
-    # Sortable columns, mapped to the queryset field (or annotation) they order by. The
-    # annotation-backed keys (name, status) get their annotation attached only when that
-    # sort is active.
-    SORT_FIELDS = {
-        "size": "size",
-        "name": "display_name",
-        "status": "status_order",
-    }
-
-    DEFAULT_SORT = "size"
-
-    SORT_DEFAULT_DIR = {
-        "size": "desc",
-        "name": "asc",
-        "status": "asc",
-    }
-
-    # Direction used for the default (unsorted) ordering.
-    DEFAULT_DIR = SORT_DEFAULT_DIR[DEFAULT_SORT]
-
-    def get(self, request: HtmxHttpRequest) -> HttpResponse:
-        """
-        Render the reclaim list (full page) or its table fragment (HTMX request)
-
-        :param request: the incoming request
-        """
-        scan = Scan.current()
-
-        if scan is None:
-            return render(request, "media_janitor/reclaim.html")
-
-        page_size = self._coerce_page_size(request.GET.get("page_size"))
-        sort, direction = self._resolve_sort(request)
-        active_filters = filters.resolve_filters(request.GET)
-
-        blobs = self._sorted_blobs(
-            scan, sort or self.DEFAULT_SORT, direction or self.DEFAULT_DIR, active_filters
-        )
-
-        paginator = Paginator[Blob](blobs, page_size)
-        # get_page() is forgiving: invalid or out-of-range pages return the first or last page
-        page_obj = paginator.get_page(request.GET.get("page"))
-
-        for blob in page_obj:
-            # Sort the prefetched links without needing another query
-            links = sorted(blob.links.all(), key=lambda link: link.path)
-            # Attached for the template only, the model has no such fields
-            blob.sorted_links = links  # type: ignore[attr-defined]
-
-        # matching_count is the filtered set, total_count is every blob in the scan.
-        # When no filter is active the two are equal, so we skip the extra count query.
-        any_filter = filters.filters_active(active_filters)
-        matching_count = page_obj.paginator.count
-        total_count = scan.blobs.count() if any_filter else matching_count
-
-        context = {
-            "page_obj": page_obj,
-            "sort": sort,
-            "dir": direction,
-            "sort_columns": self._sort_columns(sort, direction),
-            "status_chips": filters.status_chips(active_filters["statuses"]),
-            "kind_chips": filters.kind_chips(active_filters["kinds"]),
-            "flag_chips": filters.flag_chips(active_filters["flags"]),
-            "q": active_filters["q"],
-            "any_filter": any_filter,
-            "matching_count": matching_count,
-            "total_count": total_count,
-        }
-
-        return render(request, self.get_template_name(request), context)
-
-    def get_template_name(self, request: HtmxHttpRequest) -> str:
-        """
-        Choose the fragment template for an HTMX request and the full page otherwise
-
-        :param request: the incoming request
-        """
-        if request.htmx:
-            return "media_janitor/fragments/reclaim_table.html"
-        return "media_janitor/reclaim.html"
+    # Sortable columns, mapped to the queryset field (or annotation) they order by
+    SORT_FIELDS: ClassVar[dict[str, str]]
+    DEFAULT_SORT: ClassVar[str]
+    SORT_DEFAULT_DIR: ClassVar[dict[str, str]]
 
     def _coerce_page_size(self, raw: str | None) -> int:
         """
@@ -135,7 +72,7 @@ class ReclaimListView(LoginRequiredMixin, View):
         :param request: the incoming request
         """
         sort = request.GET.get("sort")
-        if sort not in self.SORT_FIELDS:
+        if not sort or sort not in self.SORT_FIELDS:
             return None, None
 
         direction = request.GET.get("dir")
@@ -143,47 +80,6 @@ class ReclaimListView(LoginRequiredMixin, View):
             direction = self.SORT_DEFAULT_DIR[sort]
 
         return sort, direction
-
-    def _status_order_case(self) -> Case:
-        """
-        Build a Case expression ranking blobs by the display status vocabulary order
-
-        This makes sure the important statuses are first when ascending (Reclaimable,
-        then Linked Externally, etc) rather than an alphabetical sort.
-        """
-        whens = [
-            When(status=key, then=Value(index)) for index, key in enumerate(display.STATUS_VOCAB)
-        ]
-        return Case(*whens, default=Value(len(display.STATUS_VOCAB)), output_field=IntegerField())
-
-    def _sorted_blobs(
-        self, scan: Scan, sort: str, direction: str, active_filters: FilterState
-    ) -> QuerySet[Blob]:
-        """
-        Build the filtered, ordered blob queryset for a scan
-
-        Filters are applied before sorting and pagination. Annotations backing the name and
-        status sorts are attached only when that sort is active. Every sort tie-breaks on pk
-        so pagination slices are stable.
-
-        :param scan: the scan whose blobs to list
-        :param sort: a validated key from SORT_FIELDS
-        :param direction: "asc" or "desc"
-        :param active_filters: the validated active filters to narrow by
-        """
-        blobs = filters.apply_filters(scan.blobs.prefetch_related("links"), active_filters)
-
-        if sort == "name":
-            display_name = Subquery(
-                Link.objects.filter(blob=OuterRef("pk")).order_by("path").values("name")[:1]
-            )
-            blobs = blobs.annotate(display_name=display_name)
-        elif sort == "status":
-            blobs = blobs.annotate(status_order=self._status_order_case())
-
-        field = self.SORT_FIELDS[sort]
-        prefix = "-" if direction == "desc" else ""
-        return blobs.order_by(f"{prefix}{field}", "pk")
 
     def _sort_columns(self, sort: str | None, direction: str | None) -> dict[str, SortColumn]:
         """
@@ -223,6 +119,273 @@ class ReclaimListView(LoginRequiredMixin, View):
                 "next_dir": next_dir,
             }
         return columns
+
+
+class ReclaimListView(SortedListView):
+    """
+    Dense table of the current scan's blobs
+
+    Returns the full page on a normal request and only the table fragment on an HTMX
+    request, so filter/sort/page controls can swap the table alone.
+    """
+
+    # Sortable columns, mapped to the queryset field (or annotation) they order by. The
+    # annotation-backed keys (name, status) get their annotation attached only when that
+    # sort is active.
+    SORT_FIELDS = {
+        "size": "size",
+        "name": "display_name",
+        "status": "status_order",
+    }
+
+    DEFAULT_SORT = "size"
+
+    SORT_DEFAULT_DIR = {
+        "size": "desc",
+        "name": "asc",
+        "status": "asc",
+    }
+
+    # Direction used for the default (unsorted) ordering.
+    DEFAULT_DIR = SORT_DEFAULT_DIR[DEFAULT_SORT]
+
+    def get(self, request: HtmxHttpRequest) -> HttpResponse:
+        """
+        Render the reclaim list (full page) or its table fragment (HTMX request)
+
+        :param request: the incoming request
+        """
+        scan = Scan.current()
+
+        if scan is None:
+            return render(request, self.get_template_name(request))
+
+        page_size = self._coerce_page_size(request.GET.get("page_size"))
+        sort, direction = self._resolve_sort(request)
+        active_filters = filters.resolve_filters(request.GET)
+
+        blobs = self._sorted_blobs(
+            scan, sort or self.DEFAULT_SORT, direction or self.DEFAULT_DIR, active_filters
+        )
+
+        paginator = Paginator[Blob](blobs, page_size)
+        # get_page() is forgiving: invalid or out-of-range pages return the first or last page
+        page_obj = paginator.get_page(request.GET.get("page"))
+
+        # matching_count is the filtered set, total_count is every blob in the scan.
+        # When no filter is active the two are equal, so we skip the extra count query.
+        any_filter = filters.filters_active(active_filters)
+        matching_count = page_obj.paginator.count
+        total_count = scan.blobs.count() if any_filter else matching_count
+
+        context = {
+            "page_obj": page_obj,
+            "sort": sort,
+            "dir": direction,
+            "sort_columns": self._sort_columns(sort, direction),
+            "status_chips": filters.status_chips(active_filters["statuses"]),
+            "kind_chips": filters.kind_chips(active_filters["kinds"]),
+            "flag_chips": filters.flag_chips(active_filters["flags"]),
+            "torrent_chips": filters.torrent_chips(active_filters["torrents"]),
+            "q": active_filters["q"],
+            "any_filter": any_filter,
+            "matching_count": matching_count,
+            "total_count": total_count,
+        }
+
+        return render(request, self.get_template_name(request), context)
+
+    def get_template_name(self, request: HtmxHttpRequest) -> str:
+        """
+        Choose the fragment template for an HTMX request and the full page otherwise
+
+        :param request: the incoming request
+        """
+        if request.htmx:
+            return "media_janitor/fragments/reclaim_table.html"
+        return "media_janitor/reclaim.html"
+
+    def _status_order_case(self) -> Case:
+        """
+        Build a Case expression ranking blobs by the display status vocabulary order
+
+        This makes sure the important statuses are first when ascending (Reclaimable,
+        then Linked Externally, etc) rather than an alphabetical sort.
+        """
+        whens = [
+            When(status=key, then=Value(index)) for index, key in enumerate(display.STATUS_VOCAB)
+        ]
+        return Case(*whens, default=Value(len(display.STATUS_VOCAB)), output_field=IntegerField())
+
+    def _sorted_blobs(
+        self, scan: Scan, sort: str, direction: str, active_filters: FilterState
+    ) -> QuerySet[Blob]:
+        """
+        Build the filtered, ordered blob queryset for a scan
+
+        Filters are applied before sorting and pagination. Annotations backing the name and
+        status sorts are attached only when that sort is active. Every sort tie-breaks on pk
+        so pagination slices are stable.
+
+        :param scan: the scan whose blobs to list
+        :param sort: a validated key from SORT_FIELDS
+        :param direction: "asc" or "desc"
+        :param active_filters: the validated active filters to narrow by
+        """
+        blobs = filters.apply_filters(
+            scan.blobs.prefetch_related(Prefetch("links", queryset=Link.objects.order_by("path"))),
+            active_filters,
+        )
+
+        if sort == "name":
+            display_name = Subquery(
+                Link.objects.filter(blob=OuterRef("pk")).order_by("path").values("name")[:1]
+            )
+            blobs = blobs.annotate(display_name=display_name)
+        elif sort == "status":
+            blobs = blobs.annotate(status_order=self._status_order_case())
+
+        field = self.SORT_FIELDS[sort]
+        prefix = "-" if direction == "desc" else ""
+        return blobs.order_by(f"{prefix}{field}", "pk")
+
+
+class TorrentListView(SortedListView):
+    """
+    Table of the current scan's torrents
+
+    Returns the full page on a normal request, and a table fragment on an HTMX request.
+    """
+
+    SORT_FIELDS = {
+        "reclaimable": "bytes_reclaimable_if_removed",
+        "name": "name",
+        "size": "size",
+    }
+
+    DEFAULT_SORT = "reclaimable"
+
+    SORT_DEFAULT_DIR = {
+        "reclaimable": "desc",
+        "name": "asc",
+        "size": "desc",
+    }
+
+    # Direction used for the default (unsorted) ordering.
+    DEFAULT_DIR = SORT_DEFAULT_DIR[DEFAULT_SORT]
+
+    def get(self, request: HtmxHttpRequest) -> HttpResponse:
+        """
+        Render the torrents list (full page) or its table fragment (HTMX request)
+
+        :param request: the incoming request
+        """
+        scan = Scan.current()
+
+        if scan is None:
+            return render(request, self.get_template_name(request))
+
+        page_size = self._coerce_page_size(request.GET.get("page_size"))
+        sort, direction = self._resolve_sort(request)
+        q = (request.GET.get("q") or "").strip()
+
+        torrents = self._sorted_torrents(
+            scan, sort or self.DEFAULT_SORT, direction or self.DEFAULT_DIR, q
+        )
+
+        paginator = Paginator[Torrent](torrents, page_size)
+        # get_page() is forgiving: invalid or out-of-range pages return the first or last page
+        page_obj = paginator.get_page(request.GET.get("page"))
+
+        # matching_count is the searched set, total_count is every torrent in the scan.
+        # When no search is active the two are equal, so we skip the extra count query.
+        matching_count = page_obj.paginator.count
+        total_count = scan.torrents.count() if q else matching_count
+
+        context = {
+            "page_obj": page_obj,
+            "sort": sort,
+            "dir": direction,
+            "sort_columns": self._sort_columns(sort, direction),
+            "q": q,
+            "matching_count": matching_count,
+            "total_count": total_count,
+        }
+
+        return render(request, self.get_template_name(request), context)
+
+    def get_template_name(self, request: HtmxHttpRequest) -> str:
+        """
+        Choose the fragment template for an HTMX request and the full page otherwise
+
+        :param request: the incoming request
+        """
+        if request.htmx:
+            return "media_janitor/fragments/torrents_table.html"
+        return "media_janitor/torrents.html"
+
+    def _sorted_torrents(self, scan: Scan, sort: str, direction: str, q: str) -> QuerySet[Torrent]:
+        """
+        Build the searched, annotated, ordered torrent queryset for a scan
+
+        Annotates each torrent with its blob count and whether it is fully reclaimable
+        (at least one blob and none with a status other than reclaimable). Fully
+        reclaimable is based on status, not bytes: cross-seeded blobs or links outside
+        the scan can still leave bytes_reclaimable_if_removed below size. Every sort
+        tie-breaks on pk so pagination slices are stable.
+
+        :param scan: the scan whose torrents to list
+        :param sort: a validated key from SORT_FIELDS
+        :param direction: "asc" or "desc"
+        :param q: text search term over the torrent name, empty for no narrowing
+        """
+        torrents = scan.torrents.all()
+        if q:
+            torrents = torrents.filter(name__icontains=q)
+
+        has_blob = Exists(Blob.objects.filter(torrents=OuterRef("pk")))
+        has_non_reclaimable = Exists(
+            Blob.objects.filter(torrents=OuterRef("pk")).exclude(status=Blob.Status.RECLAIMABLE)
+        )
+        torrents = torrents.annotate(
+            # distinct: a torrent can reference one blob through several file entries
+            blob_count=Count("blobs", distinct=True),
+            # TODO: This should be a property on the torrent an scan-time
+            fully_reclaimable=has_blob & ~has_non_reclaimable,
+        )
+
+        field = self.SORT_FIELDS[sort]
+        prefix = "-" if direction == "desc" else ""
+        return torrents.order_by(f"{prefix}{field}", "pk")
+
+
+@login_required
+def torrent_blobs(request: HttpRequest, pk: int) -> HttpResponse:
+    """
+    Render the expanded blob rows fragment for one torrent of the current scan
+
+    Scoped to the current scan so a stale or unknown pk 404s.
+
+    :param request: the incoming request
+    :param pk: primary key of the torrent whose blobs to show
+    """
+    scan = Scan.current()
+    if scan is None:
+        raise Http404("No completed scan")
+
+    torrent = get_object_or_404(scan.torrents, pk=pk)
+    # distinct: a torrent can reference one blob through several file entries
+    blobs = (
+        torrent.blobs.distinct()
+        .order_by("-size", "pk")
+        .prefetch_related(Prefetch("links", queryset=Link.objects.order_by("path")))
+    )
+
+    return render(
+        request,
+        "media_janitor/fragments/torrent_blobs.html",
+        {"blobs": blobs},
+    )
 
 
 @login_required

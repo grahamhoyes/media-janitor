@@ -1,0 +1,31 @@
+{% load janitor %}
+{% comment %}
+  Column header row for blob tables.
+
+  Context:
+    - sort_columns: Optional dict of column name to display.SortColumn. If not provided
+                    (or if None), columns are rendered without sort controls.
+    - hx_target: Optional, sets the HTMX swap target if given
+    - tr_class: Optional classes for the header
+{% endcomment %}
+<thead>
+  <tr class="{{ tr_class|default:"bg-base-200/50 text-xs" }}">
+    {% if sort_columns %}
+      {% sort_header sort_columns.status "Status" hx_target=hx_target th_class="w-34" %}
+      {% sort_header sort_columns.name "Name / Path" hx_target=hx_target %}
+    {% else %}
+      <th class="w-34">Status</th>
+      <th>Name / Path</th>
+    {% endif %}
+    <th class="w-32">Flags</th>
+    <th class="w-18">Kind</th>
+    {% if sort_columns %}
+      {% sort_header sort_columns.size "Size" hx_target=hx_target th_class="w-22" %}
+    {% else %}
+      <th class="w-22">Size</th>
+    {% endif %}
+    <th class="w-22 text-nowrap">Seeding met?</th>
+    {# Action column #}
+    <th class="w-10"></th>
+  </tr>
+</thead>

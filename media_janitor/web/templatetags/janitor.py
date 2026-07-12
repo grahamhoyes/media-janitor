@@ -1,7 +1,7 @@
 from django import template
 from django.core.paginator import Page
 
-from scanner.models import Blob, Scan
+from scanner.models import Blob, Scan, Torrent
 from web import display
 
 register = template.Library()
@@ -96,6 +96,16 @@ def status_badge(blob: Blob) -> dict[str, str]:
         "label": display.status_label(blob.status),
         "badge": display.status_badge_class(blob.status),
     }
+
+
+@register.inclusion_tag("media_janitor/fragments/status_badge.html")
+def seeding_badge(torrent: Torrent) -> dict[str, str]:
+    """
+    Render the seeding-state badge for a torrent
+
+    :param torrent: the torrent whose state to render
+    """
+    return display.torrent_state_badge(torrent.state)
 
 
 @register.inclusion_tag("media_janitor/fragments/headline_band.html")

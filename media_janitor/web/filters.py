@@ -6,18 +6,27 @@ from django.http import QueryDict
 from scanner.models import Blob, Kind
 from web.display import FLAG_VOCAB, STATUS_VOCAB, status_label
 
+# Values for the torrent tracked/untracked chip pair, mapped to their labels. Backed by
+# the Blob.torrent_tracked boolean.
+TORRENT_TRACKED_OPTIONS: dict[str, str] = {
+    "tracked": "Tracked",
+    "untracked": "Untracked",
+}
+
 
 class FilterState(TypedDict):
     """
     The validated, active filter selections parsed from the request query params
 
-    statuses, kinds, and flags hold only values present in their respective vocabularies
-    (unknown values are dropped). q is the stripped text search term, empty when absent.
+    statuses, kinds, flags, and torrents hold only values present in their respective
+    vocabularies (unknown values are dropped). q is the stripped text search term, empty
+    when absent.
     """
 
     statuses: set[str]
     kinds: set[str]
     flags: set[str]
+    torrents: set[str]
     q: str
 
 
@@ -51,13 +60,20 @@ def resolve_filters(params: QueryDict) -> FilterState:
         "statuses": {s for s in params.getlist("status") if s in STATUS_VOCAB},
         "kinds": {k for k in params.getlist("kind") if k in Kind.values},
         "flags": {f for f in params.getlist("flag") if f in FLAG_VOCAB},
+        "torrents": {t for t in params.getlist("torrent") if t in TORRENT_TRACKED_OPTIONS},
         "q": (params.get("q") or "").strip(),
     }
 
 
 def filters_active(filters: FilterState) -> bool:
     """Whether any filter is currently applied"""
-    return bool(filters["statuses"] or filters["kinds"] or filters["flags"] or filters["q"])
+    return bool(
+        filters["statuses"]
+        or filters["kinds"]
+        or filters["flags"]
+        or filters["torrents"]
+        or filters["q"]
+    )
 
 
 def apply_filters(qs: QuerySet[Blob], filters: FilterState) -> QuerySet[Blob]:
@@ -65,8 +81,9 @@ def apply_filters(qs: QuerySet[Blob], filters: FilterState) -> QuerySet[Blob]:
     Narrow a blob queryset by the active filters
 
     Statuses OR within themselves (status__in), kinds OR within themselves, flags AND (each
-    selected flag must be True), and the text search matches a link name or path
-    case-insensitively. AND across the four filter types. The text search joins the links
+    selected flag must be True), torrent tracked/untracked OR within itself (both or
+    neither selected means no narrowing), and the text search matches a link name or path
+    case-insensitively. AND across the filter types. The text search joins the links
     relation, so distinct() collapses the duplicate blob rows it can produce.
 
     :param qs: the blob queryset to narrow
@@ -78,6 +95,8 @@ def apply_filters(qs: QuerySet[Blob], filters: FilterState) -> QuerySet[Blob]:
         qs = qs.filter(kind__in=filters["kinds"])
     for flag in filters["flags"]:
         qs = qs.filter(**{flag: True})
+    if len(filters["torrents"]) == 1:
+        qs = qs.filter(torrent_tracked="tracked" in filters["torrents"])
     if filters["q"]:
         qs = qs.filter(
             Q(links__name__icontains=filters["q"]) | Q(links__path__icontains=filters["q"])
@@ -130,4 +149,10 @@ def kind_chips(selected: set[str]) -> list[FilterChip]:
 def flag_chips(selected: set[str]) -> list[FilterChip]:
     """Build the flag filter chips (FLAG_VOCAB order), using the primary color when active"""
     options = [(attr, props["label"], "btn-primary") for attr, props in FLAG_VOCAB.items()]
+    return _build_chips(options, selected)
+
+
+def torrent_chips(selected: set[str]) -> list[FilterChip]:
+    """Build the torrent tracked/untracked chips, using the primary color when active"""
+    options = [(value, label, "btn-primary") for value, label in TORRENT_TRACKED_OPTIONS.items()]
     return _build_chips(options, selected)

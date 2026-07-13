@@ -174,9 +174,8 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
                 Torrent(
                     scan=scan,
                     hash=t.hash,
-                    # TODO: persist t.normalized_state here and keep the raw string in a separate
-                    #  raw_state field
-                    state=t.state,
+                    state=t.state.value,
+                    raw_state=t.raw_state,
                     name=t.name,
                     category=t.category,
                     tracker=t.tracker,
@@ -191,7 +190,7 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
                     save_path=t.save_path,
                     seeding_met=t.seeding_met,
                     seeding_end=t.seeding_end,
-                    partial_torrent=t.partial_torrent,
+                    reclaim_state=t.reclaim_state.value,
                     bytes_reclaimable_if_removed=t.bytes_reclaimable_if_removed,
                 )
                 for t in result.torrents
@@ -220,8 +219,7 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
                     orphan_reason=b.orphan_reason,
                     cross_seed=b.cross_seed,
                     multi_link=b.multi_link,
-                    partial_torrent=b.partial_torrent,
-                    seedable_idle=b.seedable_idle,
+                    could_seed=b.could_seed,
                     links_outside_scope=b.links_outside_scope,
                 )
                 for b in result.blobs

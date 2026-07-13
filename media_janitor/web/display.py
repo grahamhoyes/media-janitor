@@ -5,7 +5,7 @@ from typing import TypedDict
 
 from django.utils.timesince import timesince, timeuntil
 
-from scanner.models import Blob, Link, Scan, Tree
+from scanner.models import Blob, Link, Scan, Torrent, TorrentState, Tree
 
 # DaisyUI styling classes per Blob.Status. Labels come from Blob.Status(...).label.
 # The next lines are a hack to make sure tailwind picks up these class names.
@@ -58,11 +58,7 @@ FLAG_VOCAB: dict[str, dict[str, str]] = {
         "label": "Multi Link",
         "description": "Has more than one hard link in the same tree",
     },
-    "partial_torrent": {
-        "label": "Partial Torrent",
-        "description": "Owning torrent has blobs of mixed status",
-    },
-    "seedable_idle": {
+    "could_seed": {
         "label": "Could Seed",
         "description": "In library and torrents trees but not seeding",
     },
@@ -73,55 +69,64 @@ FLAG_VOCAB: dict[str, dict[str, str]] = {
 }
 
 
-# TODO: Once Torrent.state stores a normalized TorrentState, key this off enum
-#  members instead so we don't rely on download client semantics.
-# qBittorrent torrent states grouped into a display label and badge class, expanded to a
-# per-state lookup below. States not listed here (stopped, queued, checking, moving, or
-# anything new) fall back to the raw state string in a muted badge.
+# DaisyUI badge class per normalized TorrentState. Labels come from the enum's
+# .label, so no client-native state strings live in the web layer.
 # The next line is a hack to make sure tailwind picks up these class names.
-# class="badge-error badge-ghost"
-class _TorrentStateGroup(TypedDict):
-    """A set of qBittorrent states sharing one display label and badge class"""
-
-    states: tuple[str, ...]
-    label: str
-    badge: str
-
-
-_TORRENT_STATE_GROUPS: list[_TorrentStateGroup] = [
-    {
-        "states": ("uploading", "stalledUP", "forcedUP"),
-        "label": "Seeding",
-        "badge": "badge-success",
-    },
-    {
-        "states": ("downloading", "metaDL", "forcedMetaDL", "stalledDL", "forcedDL", "allocating"),
-        "label": "Downloading",
-        "badge": "badge-info",
-    },
-    {
-        "states": ("error", "missingFiles"),
-        "label": "Error",
-        "badge": "badge-error",
-    },
-]
-
-TORRENT_STATE_VOCAB: dict[str, dict[str, str]] = {
-    state: {"label": group["label"], "badge": group["badge"]}
-    for group in _TORRENT_STATE_GROUPS
-    for state in group["states"]
+# class="badge-info badge-success badge-error badge-ghost badge-outline"
+TORRENT_STAGE_BADGE: dict[TorrentState, str] = {
+    TorrentState.SEEDING: "badge-success",
+    TorrentState.DOWNLOADING: "badge-info",
+    TorrentState.CHECKING: "badge-info",
+    TorrentState.MOVING: "badge-info",
+    TorrentState.QUEUED: "badge-info",
+    TorrentState.ERROR: "badge-error",
+    TorrentState.STOPPED: "badge-ghost",
+    TorrentState.OTHER: "badge-ghost",
 }
 
 
 def torrent_state_badge(state: str) -> dict[str, str]:
     """
-    Return the label and badge class for a qBittorrent torrent state
+    Return the label and badge class for a normalized torrent state value
 
-    Unrecognized states render as the raw state string in a muted badge-ghost.
+    An unrecognized value (not a TorrentState) renders as-is in a muted badge-ghost.
 
-    :param state: the torrent state string reported by the client
+    :param state: a stored TorrentState value (Torrent.state)
     """
-    return TORRENT_STATE_VOCAB.get(state, {"label": state, "badge": "badge-ghost"})
+    try:
+        member = TorrentState(state)
+    except ValueError:
+        return {"label": state, "badge": "badge-ghost"}
+    return {"label": member.label, "badge": TORRENT_STAGE_BADGE[member]}
+
+
+# Reclaim State display styling and labels
+RECLAIM_STATE_VOCAB: dict[str, dict[str, str]] = {
+    Torrent.ReclaimState.FULL: {
+        "label": "Fully Reclaimable",
+        "badge": "badge-success",
+        "tooltip": "Every file in this torrent can be reclaimed",
+    },
+    Torrent.ReclaimState.PARTIAL: {
+        "label": "Partially Reclaimable",
+        "badge": "badge-info",
+        "tooltip": "This torrent has both reclaimable and non-reclaimable files",
+    },
+    Torrent.ReclaimState.NONE: {
+        "label": "Not Reclaimable",
+        "badge": "badge-warning",
+        "tooltip": "This torrent has no reclaimable files",
+    },
+}
+
+
+def reclaim_state_badge(state: str) -> dict[str, str]:
+    """
+    Return the badge dict for a torrent reclaim-state value
+
+    :param state: a stored Torrent.ReclaimState value (Torrent.reclaim_state)
+    """
+    return RECLAIM_STATE_VOCAB.get(state, RECLAIM_STATE_VOCAB[Torrent.ReclaimState.NONE])
 
 
 # A one-line explanation of why a blob has its status, shown in the detail drawer

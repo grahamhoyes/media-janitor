@@ -12,9 +12,8 @@ from scanner.clients.base import (
     DownloadClient,
     TorrentFile,
     TorrentSnapshot,
-    TorrentState,
 )
-from scanner.models import Blob, BlobTorrent, Link, Scan, Torrent
+from scanner.models import Blob, BlobTorrent, Link, Scan, Torrent, TorrentState
 from scanner.pipeline.lock import SCAN_LOCK_KEY
 from scanner.pipeline.orchestrator import RETAIN_SCANS, _prune_scans, run_scan
 
@@ -126,6 +125,11 @@ def test_publishes_complete_snapshot_with_reclaimable_totals(tmp_path):
     assert Link.objects.filter(scan=scan).count() == 3
     assert Torrent.objects.filter(scan=scan).count() == 1
     assert BlobTorrent.objects.filter(scan=scan).count() == 1
+
+    torrent = Torrent.objects.get(scan=scan)
+    assert torrent.state == TorrentState.SEEDING
+    assert torrent.state == "seeding"
+    assert torrent.raw_state == "uploading"
 
     foo_blob = Blob.objects.get(scan=scan, status=Blob.Status.IN_LIBRARY)
     assert foo_blob.torrent_tracked is True

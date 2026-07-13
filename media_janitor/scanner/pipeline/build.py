@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import PurePosixPath
 
-from scanner.clients.base import TorrentSnapshot, TorrentState
-from scanner.models import Blob, Kind, Tree
+from scanner.clients.base import TorrentSnapshot
+from scanner.models import Blob, Kind, Torrent, TorrentState, Tree
 from scanner.paths import kind_for, tree_for
 from scanner.pipeline.classify import compute_flags, provisionally_classify_status
 from scanner.pipeline.seeding import SeedingReqs, evaluate_seeding
@@ -50,13 +50,12 @@ class TorrentDraft:
     """Per-scan snapshot of a torrent"""
 
     hash: str
-    state: str
-    "Raw client state string, to be persisted on Torrent.state"
+    state: TorrentState
+    "Normalized torrent state, persisted on Torrent.state"
 
-    normalized_state: TorrentState
-    """
-    Normalized torrent state. Used internally only, not persisted.
-    """
+    raw_state: str
+    "Raw client-native state string, persisted on Torrent.raw_state"
+
     name: str
     category: str
     tracker: str
@@ -74,7 +73,7 @@ class TorrentDraft:
     save_path: str
     seeding_met: bool
     seeding_end: datetime | None
-    partial_torrent: bool = False
+    reclaim_state: Torrent.ReclaimState = Torrent.ReclaimState.NONE
     # Bytes freed by removing this torrent: its reclaimable, last-link blobs.
     # Computed during the build after blob flags are set.
     bytes_reclaimable_if_removed: int = 0
@@ -102,8 +101,7 @@ class BlobDraft:
     orphan_reason: str = ""
     cross_seed: bool = False
     multi_link: bool = False
-    partial_torrent: bool = False
-    seedable_idle: bool = False
+    could_seed: bool = False
     links_outside_scope: bool = False
     owner_torrents: list[TorrentDraft] = field(default_factory=list)
     "Torrents owning this blob. Used internally only, not persisted."
@@ -227,8 +225,8 @@ def build_scan_model(
         seeding = evaluate_seeding(t.completed_on, t.ratio, reqs, now)
         td = TorrentDraft(
             hash=t.hash,
-            state=t.raw_state,
-            normalized_state=t.state,
+            state=t.state,
+            raw_state=t.raw_state,
             name=t.name,
             category=t.category,
             tracker=t.tracker,
@@ -282,7 +280,7 @@ def build_scan_model(
         in_quarantine = any(now - link.mtime < quarantine_window for link in blob.links)
         blob.status = provisionally_classify_status(
             link_trees=tuple(link.tree for link in blob.links),
-            torrent_states=tuple(t.normalized_state for t in blob.owner_torrents),
+            torrent_states=tuple(t.state for t in blob.owner_torrents),
             seeding_met=blob.seeding_met,
             in_quarantine=in_quarantine,
         )
@@ -323,17 +321,17 @@ def build_scan_model(
 
     # Compute flags. This depends only on trees, torrent states, nlink, and
     # links_found, so it runs before the status override (which keys on
-    # links_outside_scope) and before partial_torrent (which keys on status).
+    # links_outside_scope) and before reclaim_state (which keys on status).
     for blob in blobs:
         flags = compute_flags(
             link_trees=tuple(link.tree for link in blob.links),
-            torrent_states=tuple(t.normalized_state for t in blob.owner_torrents),
+            torrent_states=tuple(t.state for t in blob.owner_torrents),
             nlink=blob.nlink,
             links_found=blob.links_found,
         )
         blob.cross_seed = flags.cross_seed
         blob.multi_link = flags.multi_link
-        blob.seedable_idle = flags.seedable_idle
+        blob.could_seed = flags.could_seed
         blob.links_outside_scope = flags.links_outside_scope
 
     # linked_externally override: a blob that would otherwise be reclaimable but
@@ -345,23 +343,30 @@ def build_scan_model(
     #     from a colocated media file (note that provisionally_classify_status won't
     #     return linked_externally)
     #   - After compute_flags, so we have links_outside_scope
-    #   - Before partial_torrent, so a torrent split between reclaimable and
-    #     linked_externally is marked partial
+    #   - Before reclaim_state, so a torrent split between reclaimable and
+    #     linked_externally is classified partial
     #
     # This establishes the invariant that no RECLAIMABLE blob has links_outside_scope set.
     for blob in blobs:
         if blob.status is Blob.Status.RECLAIMABLE and blob.links_outside_scope:
             blob.status = Blob.Status.LINKED_EXTERNALLY
 
-    # partial_torrent: a torrent is partial when its owned blobs do not all share
-    # the same status. Statuses are now final (including sidecars and the
-    # linked_externally override), so mark every owned blob and the torrent itself
-    # accordingly.
+    # reclaim_state: classify each torrent in reclaim terms from its owned blobs'
+    # statuses. Statuses are now final (including sidecars and the linked_externally
+    # override). full when every owned blob is reclaimable, partial when reclaimable
+    # and non-reclaimable blobs coexist, none when no owned blob is reclaimable
+    # (which also covers the empty torrent, the default).
     for td in torrent_data:
-        if len({b.status for b in td.owned_blobs}) > 1:
-            td.partial_torrent = True
-            for b in td.owned_blobs:
-                b.partial_torrent = True
+        statuses = {b.status for b in td.owned_blobs}
+        has_reclaimable = Blob.Status.RECLAIMABLE in statuses
+        has_other = bool(statuses - {Blob.Status.RECLAIMABLE})
+        if has_reclaimable and not has_other:
+            td.reclaim_state = Torrent.ReclaimState.FULL
+        elif has_reclaimable and has_other:
+            td.reclaim_state = Torrent.ReclaimState.PARTIAL
+        else:
+            # This is the default on TorrentDraft too
+            td.reclaim_state = Torrent.ReclaimState.NONE
 
     # bytes_reclaimable_if_removed: bytes freed if this whole torrent is removed.
     # Removing a torrent deletes only the paths it references, so a blob is freed

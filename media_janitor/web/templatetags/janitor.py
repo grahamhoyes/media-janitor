@@ -9,6 +9,7 @@ register = template.Library()
 # Expose display helpers as filters. The vocabulary and logic live in web.display
 # so views and tests can import them without the template layer.
 register.filter("active_flags", display.active_flags)
+register.filter("reclaim_state_badge", display.reclaim_state_badge)
 register.filter("status_reason", display.status_reason)
 register.filter("since", display.since)
 register.filter("until", display.until)

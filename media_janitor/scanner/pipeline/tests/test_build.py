@@ -2,8 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from scanner.clients.base import TorrentFile, TorrentSnapshot, TorrentState
-from scanner.models import Blob, Kind, Tree
+from scanner.clients.base import TorrentFile, TorrentSnapshot
+from scanner.models import Blob, Kind, Torrent, TorrentState, Tree
 from scanner.pipeline.build import (
     ORPHANED_SIDECAR_REASON,
     BlobDraft,
@@ -167,7 +167,7 @@ def test_in_progress_active_torrent():
     f = TorrentFile(index=0, path="torrents/dl.mkv", size=100)
     result = run(
         [rec("torrents/dl.mkv", st_ino=40)],
-        [torrent([f], state=TorrentState.IN_FLIGHT, raw_state="downloading")],
+        [torrent([f], state=TorrentState.DOWNLOADING, raw_state="downloading")],
     )
     blob = result.blobs[0]
     assert blob.status is Blob.Status.IN_PROGRESS
@@ -212,7 +212,9 @@ def test_torrent_data_persists_raw_state_and_seeding():
     assert len(result.torrents) == 1
     td = result.torrents[0]
     assert td.hash == "abc"
-    assert td.state == "stalledUP"
+    # state holds the normalized TorrentState, raw_state keeps the client string
+    assert td.state is TorrentState.SEEDING
+    assert td.raw_state == "stalledUP"
     assert td.seeding_met is True
     # Single reclaimable, last-link blob: removing the torrent frees its bytes.
     assert td.bytes_reclaimable_if_removed == 100
@@ -409,9 +411,9 @@ def test_no_reclaimable_blob_has_links_outside_scope():
             assert blob.links_outside_scope is False
 
 
-def test_partial_torrent_reclaimable_and_linked_externally_mix():
+def test_reclaim_state_partial_reclaimable_and_linked_externally_mix():
     # A torrent owns one reclaimable blob and one outside-scope blob (now
-    # linked_externally). The two statuses differ, so the torrent is partial.
+    # linked_externally). Reclaimable and non-reclaimable coexist, so partial.
     f_recl = TorrentFile(index=0, path="torrents/pack/in.mkv", size=100)
     f_ext = TorrentFile(index=1, path="torrents/pack/out.mkv", size=100)
     records = [
@@ -424,9 +426,7 @@ def test_partial_torrent_reclaimable_and_linked_externally_mix():
     ext = blob_by_ino(result, 411)
     assert in_scope.status is Blob.Status.RECLAIMABLE
     assert ext.status is Blob.Status.LINKED_EXTERNALLY
-    assert in_scope.partial_torrent is True
-    assert ext.partial_torrent is True
-    assert result.torrents[0].partial_torrent is True
+    assert result.torrents[0].reclaim_state is Torrent.ReclaimState.PARTIAL
 
 
 def test_linked_externally_override_is_per_blob_for_sidecars():
@@ -450,12 +450,12 @@ def test_linked_externally_override_is_per_blob_for_sidecars():
     assert sidecar.orphan_reason == ""
 
 
-# --- partial_torrent ---------------------------------------------------------
+# --- reclaim_state -----------------------------------------------------------
 
 
-def test_partial_torrent_season_pack_mixed_status():
+def test_reclaim_state_partial_season_pack_mixed_status():
     # A season pack: one episode in the library (kept), one only in torrents and
-    # seeding-met (reclaimable) -> mixed statuses -> partial.
+    # seeding-met (reclaimable) -> reclaimable and non-reclaimable coexist -> partial.
     f_keep = TorrentFile(index=0, path="torrents/pack/ep1.mkv", size=100)
     f_recl = TorrentFile(index=1, path="torrents/pack/ep2.mkv", size=100)
     records = [
@@ -471,12 +471,11 @@ def test_partial_torrent_season_pack_mixed_status():
     ep2 = blob_by_ino(result, 101)
     assert ep1.status is Blob.Status.IN_LIBRARY
     assert ep2.status is Blob.Status.RECLAIMABLE
-    assert ep1.partial_torrent is True
-    assert ep2.partial_torrent is True
-    assert result.torrents[0].partial_torrent is True
+    assert result.torrents[0].reclaim_state is Torrent.ReclaimState.PARTIAL
 
 
-def test_not_partial_when_all_blobs_same_status():
+def test_reclaim_state_full_when_all_blobs_reclaimable():
+    # Every owned blob is reclaimable -> fully reclaimable.
     f1 = TorrentFile(index=0, path="torrents/pack/a.mkv", size=100)
     f2 = TorrentFile(index=1, path="torrents/pack/b.mkv", size=100)
     records = [
@@ -485,8 +484,39 @@ def test_not_partial_when_all_blobs_same_status():
     ]
     t = torrent([f1, f2], hash="pack", ratio=5.0)
     result = run(records, [t])
-    assert all(not b.partial_torrent for b in result.blobs)
-    assert result.torrents[0].partial_torrent is False
+    assert all(b.status is Blob.Status.RECLAIMABLE for b in result.blobs)
+    assert result.torrents[0].reclaim_state is Torrent.ReclaimState.FULL
+
+
+def test_reclaim_state_none_when_uniform_non_reclaimable():
+    # A torrent whose owned blobs are all in_library (non-reclaimable) is none,
+    # NOT partial: the old partial meaning (mixed status) is narrowed to reclaim.
+    f1 = TorrentFile(index=0, path="torrents/pack/a.mkv", size=100)
+    f2 = TorrentFile(index=1, path="torrents/pack/b.mkv", size=100)
+    records = [
+        rec("torrents/pack/a.mkv", st_ino=112, nlink=2),
+        rec("media/tv/show/a.mkv", st_ino=112, nlink=2),
+        rec("torrents/pack/b.mkv", st_ino=113, nlink=2),
+        rec("media/tv/show/b.mkv", st_ino=113, nlink=2),
+    ]
+    t = torrent([f1, f2], hash="pack", ratio=5.0)
+    result = run(records, [t])
+    assert all(b.status is Blob.Status.IN_LIBRARY for b in result.blobs)
+    assert result.torrents[0].reclaim_state is Torrent.ReclaimState.NONE
+
+
+def test_reclaim_state_none_for_empty_torrent():
+    # A torrent whose files match no scanned blob owns nothing -> none.
+    f = TorrentFile(index=0, path="torrents/missing.mkv", size=100)
+    result = run([rec("media/movies/other.mkv", st_ino=114)], [torrent([f], hash="empty")])
+    assert result.torrents[0].owned_blobs == []
+    assert result.torrents[0].reclaim_state is Torrent.ReclaimState.NONE
+
+
+def test_blobs_have_no_partial_torrent_attribute():
+    # partial_torrent was removed from BlobDraft in favor of Torrent.reclaim_state.
+    result = run([rec("torrents/pack/a.mkv", st_ino=115)])
+    assert not hasattr(result.blobs[0], "partial_torrent")
 
 
 def test_release_torrent_with_sample_subfolder_and_sidecar():
@@ -560,10 +590,9 @@ def test_release_torrent_with_sample_subfolder_and_sidecar():
         assert thumb.status is Blob.Status.RECLAIMABLE
         assert thumb.orphan_reason == ""
 
-    # Mixed statuses across the torrent -> every owned blob and the torrent are
-    # flagged partial
-    assert result.torrents[0].partial_torrent is True
-    assert all(b.partial_torrent for b in (main, nfo, srr, sample, *thumbs))
+    # Reclaimable (sample, thumbnails) and non-reclaimable (kept main + sidecars)
+    # blobs coexist across the torrent = partial reclaim state.
+    assert result.torrents[0].reclaim_state is Torrent.ReclaimState.PARTIAL
 
     # The whole Sample/ subfolder frees space (sample + two thumbnails); the kept
     # main and its bound sidecars do not

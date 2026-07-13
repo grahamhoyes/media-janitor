@@ -9,8 +9,8 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
-from scanner.clients.base import TorrentState
 from scanner.clients.qbittorrent import QBittorrentClient, QBittorrentError
+from scanner.models import TorrentState
 
 HOST = "http://qbit.local:8080"
 API_KEY = "test-api-key"
@@ -137,19 +137,27 @@ async def test_gather_happy_path():
 @pytest.mark.parametrize(
     "raw,expected",
     [
-        ("downloading", TorrentState.IN_FLIGHT),
-        ("metaDL", TorrentState.IN_FLIGHT),
-        ("stalledDL", TorrentState.IN_FLIGHT),
-        ("moving", TorrentState.IN_FLIGHT),
-        # checkingUP is a recheck in progress, not active seeding
-        ("checkingUP", TorrentState.IN_FLIGHT),
+        ("downloading", TorrentState.DOWNLOADING),
+        ("metaDL", TorrentState.DOWNLOADING),
+        ("forcedMetaDL", TorrentState.DOWNLOADING),
+        ("stalledDL", TorrentState.DOWNLOADING),
+        ("forcedDL", TorrentState.DOWNLOADING),
+        ("allocating", TorrentState.DOWNLOADING),
+        # checking states are a recheck in progress, not active seeding
+        ("checkingDL", TorrentState.CHECKING),
+        ("checkingUP", TorrentState.CHECKING),
+        ("checkingResumeData", TorrentState.CHECKING),
+        ("moving", TorrentState.MOVING),
+        ("queuedDL", TorrentState.QUEUED),
         ("uploading", TorrentState.SEEDING),
         ("stalledUP", TorrentState.SEEDING),
         ("forcedUP", TorrentState.SEEDING),
+        # queuedUP is a completed torrent queued to seed: SEEDING, not QUEUED
+        ("queuedUP", TorrentState.SEEDING),
         ("stoppedDL", TorrentState.STOPPED),
         ("stoppedUP", TorrentState.STOPPED),
-        ("error", TorrentState.OTHER),
-        ("missingFiles", TorrentState.OTHER),
+        ("error", TorrentState.ERROR),
+        ("missingFiles", TorrentState.ERROR),
         ("unknown", TorrentState.OTHER),
         # Legacy paused states that were replaced with stopped in 5.0
         ("pausedUP", TorrentState.OTHER),

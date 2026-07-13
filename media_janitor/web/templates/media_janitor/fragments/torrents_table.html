@@ -8,8 +8,7 @@
   the first open only, lazily loads the torrent's blob rows into the detail cell with HTMX.
 
   Context:
-    - page_obj: the paginator Page instance of annotated Torrents (blob_count,
-                fully_reclaimable)
+    - page_obj: the paginator Page instance of Torrents, each annotated with a blob_count
     - sort: sort key (column)
     - dir: sort direction (asc/desc)
     - sort_columns: dict of column name to display.SortColumn, which tells us what to do
@@ -66,8 +65,9 @@
         <th class="w-26">Seeding</th>
         <th class="w-14">Blobs</th>
         {% sort_header sort_columns.size "Size" hx_target="#torrents-table" th_class="w-22" %}
-        {% sort_header sort_columns.reclaimable "Reclaimable" hx_target="#torrents-table" th_class="w-30" %}
-        <th class="w-40">Markers</th>
+        {% sort_header sort_columns.reclaimable "Reclaimable Size" hx_target="#torrents-table" th_class="w-31" %}
+        <th class="w-40"
+            title="Whether the torrent can be removed to reclaim space">Reclaimable?</th>
         {# Action column #}
         <th class="w-10"></th>
       </tr>
@@ -106,25 +106,15 @@
           {# Size #}
           <td class="text-right font-mono whitespace-nowrap">{{ torrent.size|binsize }}</td>
 
-          {# Reclaimable if removed #}
+          {# Reclaimable space if removed #}
           <td class="text-right font-mono whitespace-nowrap">{{ torrent.bytes_reclaimable_if_removed|binsize }}</td>
 
-          {# Markers #}
-          {% comment %}
-          TODO: replace these with a single badge for a new scan-time Torrent.reclaim_state
-           (full/partial/none).
-          {% endcomment %}
+          {# Reclaimable #}
           <td>
-            <div class="flex flex-wrap gap-1">
-              {% if torrent.fully_reclaimable %}
-                <span class="badge badge-success badge-outline badge-xs cursor-help whitespace-nowrap"
-                      title="Every blob of this torrent can be reclaimed">Fully Reclaimable</span>
-              {% endif %}
-              {% if torrent.partial_torrent %}
-                <span class="badge badge-outline badge-xs cursor-help whitespace-nowrap"
-                      title="Owning torrent has blobs of mixed status">Partial Torrent</span>
-              {% endif %}
-            </div>
+            {% with badge=torrent.reclaim_state|reclaim_state_badge %}
+              <span class="badge {{ badge.badge }} badge-xs cursor-help whitespace-nowrap"
+                    title="{{ badge.tooltip }}">{{ badge.label }}</span>
+            {% endwith %}
           </td>
 
           {# Actions TODO: remove whole torrent control #}

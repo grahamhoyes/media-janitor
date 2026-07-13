@@ -442,9 +442,9 @@ def test_filter_combines_status_and_flag(logged_in_client):
     )
     assert _sizes(match) == [6000]
 
-    # reclaimable does not carry partial_torrent, so the combination is empty
+    # the reclaimable blob does not carry multi_link, so the combination is empty
     empty = logged_in_client.get(
-        reverse("reclaim"), {"status": "reclaimable", "flag": "partial_torrent"}
+        reverse("reclaim"), {"status": "reclaimable", "flag": "multi_link"}
     )
     assert _sizes(empty) == []
 
@@ -452,12 +452,12 @@ def test_filter_combines_status_and_flag(logged_in_client):
 @pytest.mark.django_db
 def test_filter_multiple_flags_are_anded(logged_in_client):
     make_complete_scan()
-    # The in_library blob (2000) carries both seedable_idle and multi_link
-    both = logged_in_client.get(reverse("reclaim"), {"flag": ["seedable_idle", "multi_link"]})
+    # The in_library blob (2000) carries both could_seed and multi_link
+    both = logged_in_client.get(reverse("reclaim"), {"flag": ["could_seed", "multi_link"]})
     assert _sizes(both) == [2000]
 
-    # No blob carries both seedable_idle and cross_seed
-    none = logged_in_client.get(reverse("reclaim"), {"flag": ["seedable_idle", "cross_seed"]})
+    # No blob carries both could_seed and cross_seed
+    none = logged_in_client.get(reverse("reclaim"), {"flag": ["could_seed", "cross_seed"]})
     assert _sizes(none) == []
 
 

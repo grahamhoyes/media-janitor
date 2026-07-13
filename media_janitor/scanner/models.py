@@ -193,9 +193,8 @@ class Blob(models.Model):
     )
 
     torrent_tracked = models.BooleanField(
-        # TODO: Remove qBittorrent from help text
         default=False,
-        help_text="Whether this blob is part of a torrent in qBittorrent",
+        help_text="Whether this blob is part of a torrent in the torrent client",
     )
     seeding_met = models.BooleanField(
         null=True,
@@ -228,12 +227,7 @@ class Blob(models.Model):
     multi_link = models.BooleanField(
         default=False, help_text="Multiple hard links in the same tree"
     )
-    partial_torrent = models.BooleanField(
-        default=False,
-        help_text="A torrent linked to this blob has blobs that do not all share the same status",
-    )
-    # TODO: Rename to could_seed (already reflected in web/display.py)
-    seedable_idle = models.BooleanField(
+    could_seed = models.BooleanField(
         default=False,
         help_text="In the library and torrent trees, but isn't seeding. "
         "Covers the case of no owning torrent or an owning torrent that is stopped. "
@@ -280,16 +274,65 @@ class Link(models.Model):
         return f"Link {self.path}"
 
 
-# TODO: This should be agnostic of the download client, so don't mention qBittorrent
-#  in the docstring.
+class TorrentState(models.TextChoices):
+    """
+    Normalized, client-agnostic torrent state
+
+    Concrete download clients map their native state strings onto these members.
+    """
+
+    SEEDING = "seeding"
+    DOWNLOADING = "downloading"
+    CHECKING = "checking"
+    MOVING = "moving"
+    QUEUED = "queued"
+    ERROR = "error"
+    STOPPED = "stopped"
+    OTHER = "other"
+
+    @property
+    def is_active(self) -> bool:
+        """
+        Whether the torrent is doing work other than seeding: downloading, checking,
+        moving, or queued
+        """
+        return self in {
+            TorrentState.DOWNLOADING,
+            TorrentState.CHECKING,
+            TorrentState.MOVING,
+            TorrentState.QUEUED,
+        }
+
+
 class Torrent(models.Model):
-    """Per-scan snapshot of a qBittorrent torrent"""
+    """Per-scan snapshot of a download client torrent"""
+
+    class ReclaimState(models.TextChoices):
+        FULL = "full"
+        """
+        Fully reclaimable: the torrent has at least one owned blob and every owned
+        blob is reclaimable, so removing it frees all of them.
+        """
+        PARTIAL = "partial"
+        """
+        Partially reclaimable: the torrent owns both reclaimable and non-reclaimable
+        blobs, so removing it frees only some of them.
+        """
+        NONE = "none"
+        """
+        Not reclaimable: no owned blob is reclaimable (or the torrent is empty).
+        """
 
     scan = models.ForeignKey(Scan, on_delete=models.CASCADE, related_name="torrents")
     hash = models.CharField(max_length=40)
-    # TODO: Should hold normalized TorrentState, and a separate raw_state for what
-    #  is in this field currently.
-    state = models.CharField(max_length=32)
+    state = models.CharField(max_length=32, choices=TorrentState)
+    raw_state = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Raw state as reported by the torrent client",
+    )
+    "Raw state as reported by the torrent client. For debugging purposes only, don't use in logic."
     name = models.TextField(help_text="Torrent name as reported by the torrent client")
     category = models.CharField(
         max_length=255,
@@ -342,8 +385,12 @@ class Torrent(models.Model):
         blank=True,
         help_text="When seeding requirements will be met if seeding_met is false",
     )
-    partial_torrent = models.BooleanField(
-        default=False, help_text="Blobs in this torrent do not all share the same status"
+    reclaim_state = models.CharField(
+        choices=ReclaimState,
+        max_length=16,
+        default=ReclaimState.NONE,
+        help_text="Reclaim status of the torrent's owned blobs: full (all reclaimable), "
+        "partial (a mix of reclaimable and non-reclaimable), or none (no reclaimable blob)",
     )
     bytes_reclaimable_if_removed = models.BigIntegerField(
         default=0,

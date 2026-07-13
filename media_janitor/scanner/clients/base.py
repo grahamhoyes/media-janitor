@@ -8,30 +8,10 @@ converting client-native absolute paths into share-relative paths.
 """
 
 import abc
-import enum
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-
-# TODO: relocate this to scanner/models.py so it can be used as a choice field, and
-#  split IN_FLIGHT into more specific categories (DOWNLOADING, CHECKING, MOVING, QUEUED)
-#  and a dedicated ERROR state. Add an `is_active` method so classify.py can keep its
-#  current semantics.
-class TorrentState(enum.Enum):
-    """
-    Torrent state
-
-    Concrete clients map their native state strings onto these members
-    """
-
-    IN_FLIGHT = "in_flight"
-    "Downloading, moving, checking, etc"
-
-    SEEDING = "seeding"
-    STOPPED = "stopped"
-
-    OTHER = "other"
-    "Missing, error, or unknown states that are not treated as seeding"
+from scanner.models import TorrentState
 
 
 @dataclass(frozen=True)
@@ -50,9 +30,8 @@ class TorrentSnapshot:
     hash: str
     state: TorrentState
 
-    # client-native state, saved in Torrent.state.
-    # we persist the raw state for debugging. `TorrentState` is for
-    # internal logic only.
+    # Client-native state, saved on Torrent.raw_state for debugging only.
+    # The normalized TorrentState in `state` is what the pipeline and web layer use.
     raw_state: str
 
     name: str

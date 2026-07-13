@@ -6,7 +6,6 @@ from django.core.paginator import Paginator
 from django.db.models import (
     Case,
     Count,
-    Exists,
     IntegerField,
     OuterRef,
     Prefetch,
@@ -328,11 +327,8 @@ class TorrentListView(SortedListView):
         """
         Build the searched, annotated, ordered torrent queryset for a scan
 
-        Annotates each torrent with its blob count and whether it is fully reclaimable
-        (at least one blob and none with a status other than reclaimable). Fully
-        reclaimable is based on status, not bytes: cross-seeded blobs or links outside
-        the scan can still leave bytes_reclaimable_if_removed below size. Every sort
-        tie-breaks on pk so pagination slices are stable.
+        Annotates each torrent with its blob count. Every sort tie-breaks on pk so
+        pagination slices are stable.
 
         :param scan: the scan whose torrents to list
         :param sort: a validated key from SORT_FIELDS
@@ -343,15 +339,9 @@ class TorrentListView(SortedListView):
         if q:
             torrents = torrents.filter(name__icontains=q)
 
-        has_blob = Exists(Blob.objects.filter(torrents=OuterRef("pk")))
-        has_non_reclaimable = Exists(
-            Blob.objects.filter(torrents=OuterRef("pk")).exclude(status=Blob.Status.RECLAIMABLE)
-        )
         torrents = torrents.annotate(
             # distinct: a torrent can reference one blob through several file entries
             blob_count=Count("blobs", distinct=True),
-            # TODO: This should be a property on the torrent an scan-time
-            fully_reclaimable=has_blob & ~has_non_reclaimable,
         )
 
         field = self.SORT_FIELDS[sort]

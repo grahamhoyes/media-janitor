@@ -36,24 +36,35 @@ logger = logging.getLogger(__name__)
 # qBittorrent 5.2 torrent states. See:
 # https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)#get-torrent-list
 
-# Downloading-ish: torrent is doing work or waiting to download.
-_IN_FLIGHT_STATES: frozenset[str] = frozenset(
+# Actively downloading or waiting to download
+_DOWNLOADING_STATES: frozenset[str] = frozenset(
     {
         "downloading",
         "metaDL",
         "forcedMetaDL",
         "stalledDL",
-        "checkingDL",
         "forcedDL",
-        "queuedDL",
         "allocating",
-        "checkingResumeData",
-        "checkingUP",
-        "moving",
     }
 )
 
-# Uploading-ish: torrent has completed and is actively seeding (or could be)
+# Verifying data on disk
+_CHECKING_STATES: frozenset[str] = frozenset(
+    {
+        "checkingDL",
+        "checkingUP",
+        "checkingResumeData",
+    }
+)
+
+# Relocating content between paths
+_MOVING_STATES: frozenset[str] = frozenset({"moving"})
+
+# Waiting in the download queue. queuedUP is excluded (see _SEEDING_STATES).
+_QUEUED_STATES: frozenset[str] = frozenset({"queuedDL"})
+
+# Completed and actively seeding (or could be). queuedUP is a completed torrent
+# queued to seed, so it is treated as seeding, not queued.
 _SEEDING_STATES: frozenset[str] = frozenset(
     {
         "uploading",
@@ -68,6 +79,14 @@ _STOPPED_STATES: frozenset[str] = frozenset(
     {
         "stoppedDL",
         "stoppedUP",
+    }
+)
+
+# Torrent is in an error condition
+_ERROR_STATES: frozenset[str] = frozenset(
+    {
+        "error",
+        "missingFiles",
     }
 )
 
@@ -150,12 +169,20 @@ class QBittorrentClient(DownloadClient):
     @staticmethod
     def _normalize_state(raw: str) -> TorrentState:
         """Map a qBittorrent 5.2 native state string onto a normalized TorrentState"""
-        if raw in _IN_FLIGHT_STATES:
-            return TorrentState.IN_FLIGHT
+        if raw in _DOWNLOADING_STATES:
+            return TorrentState.DOWNLOADING
+        if raw in _CHECKING_STATES:
+            return TorrentState.CHECKING
+        if raw in _MOVING_STATES:
+            return TorrentState.MOVING
+        if raw in _QUEUED_STATES:
+            return TorrentState.QUEUED
         if raw in _SEEDING_STATES:
             return TorrentState.SEEDING
         if raw in _STOPPED_STATES:
             return TorrentState.STOPPED
+        if raw in _ERROR_STATES:
+            return TorrentState.ERROR
 
         return TorrentState.OTHER
 

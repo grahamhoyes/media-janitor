@@ -114,11 +114,11 @@ def test_active_flags_returns_truthy_in_order():
     blob = _bare_blob(
         links_outside_scope=True,
         cross_seed=True,
-        partial_torrent=True,
+        multi_link=True,
     )
     labels = [label for label, _ in active_flags(blob)]
     # Order follows FLAG_VOCAB, not the order the flags were set.
-    assert labels == ["Cross Seed", "Partial Torrent", "Outside Scope"]
+    assert labels == ["Cross Seed", "Multi Link", "Outside Scope"]
 
 
 def test_active_flags_includes_tooltips():

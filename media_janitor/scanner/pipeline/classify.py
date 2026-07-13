@@ -1,8 +1,7 @@
 from collections import Counter
 from dataclasses import dataclass
 
-from scanner.clients import TorrentState
-from scanner.models import Blob, Tree
+from scanner.models import Blob, TorrentState, Tree
 
 
 @dataclass(frozen=True)
@@ -13,7 +12,7 @@ class BlobFlags:
     "Blob served by more than one torrent"
     multi_link: bool
     "Multiple hard links in the same tree"
-    seedable_idle: bool
+    could_seed: bool
     """
     In the library and torrent tree, but isn't seeding, where re-seeding is an
     easy fix.
@@ -50,7 +49,7 @@ def provisionally_classify_status(
     """
     torrent_tracked = bool(torrent_states)
     has_library_link = Tree.LIBRARY in link_trees
-    has_active_torrent = any(s is TorrentState.IN_FLIGHT for s in torrent_states)
+    has_active_torrent = any(s.is_active for s in torrent_states)
 
     if has_active_torrent or in_quarantine:
         return Blob.Status.IN_PROGRESS
@@ -86,7 +85,7 @@ def compute_flags(
     """
     has_library_link = Tree.LIBRARY in link_trees
     has_torrents_link = Tree.TORRENTS in link_trees
-    has_active_torrent = any(s is TorrentState.IN_FLIGHT for s in torrent_states)
+    has_active_torrent = any(s.is_active for s in torrent_states)
     has_seeding_torrent = any(s is TorrentState.SEEDING for s in torrent_states)
     has_stopped_torrent = any(s is TorrentState.STOPPED for s in torrent_states)
 
@@ -95,7 +94,7 @@ def compute_flags(
     return BlobFlags(
         cross_seed=len(torrent_states) > 1,
         multi_link=any(count > 1 for count in tree_counts.values()),
-        seedable_idle=(
+        could_seed=(
             has_library_link
             and has_torrents_link
             and not has_seeding_torrent

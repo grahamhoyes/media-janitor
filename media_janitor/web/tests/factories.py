@@ -9,6 +9,7 @@ from scanner.models import (
     Link,
     Scan,
     Torrent,
+    TorrentState,
     Tree,
 )
 
@@ -79,7 +80,7 @@ def make_torrent(scan: Scan, hash_: str = "a" * 40, **kwargs) -> Torrent:
     :param kwargs: field overrides
     """
     defaults = {
-        "state": "stalledUP",
+        "state": TorrentState.SEEDING,
         "name": "Example Torrent",
         "category": "radarr",
         "tracker": "https://tracker.example/announce",
@@ -138,7 +139,6 @@ def make_complete_scan() -> Scan:
         kind=Kind.MEDIA,
         torrent_tracked=True,
         seeding_met=False,
-        partial_torrent=True,
         trees=[Tree.TORRENTS],
     )
     in_library = make_blob(
@@ -147,7 +147,7 @@ def make_complete_scan() -> Scan:
         size=2000,
         status=Blob.Status.IN_LIBRARY,
         kind=Kind.SIDECAR,
-        seedable_idle=True,
+        could_seed=True,
         multi_link=True,
         trees=[Tree.LIBRARY],
     )

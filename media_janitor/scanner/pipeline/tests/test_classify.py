@@ -1,7 +1,6 @@
 import pytest
 
-from scanner.clients.base import TorrentState
-from scanner.models import Blob, Tree
+from scanner.models import Blob, TorrentState, Tree
 from scanner.pipeline.classify import compute_flags, provisionally_classify_status
 
 
@@ -44,7 +43,7 @@ def flags_kwargs(
         (
             status_kwargs(
                 link_trees=(Tree.LIBRARY,),
-                owner_states=(TorrentState.IN_FLIGHT,),
+                owner_states=(TorrentState.DOWNLOADING,),
                 seeding_met=False,
             ),
             Blob.Status.IN_PROGRESS,
@@ -165,11 +164,11 @@ def test_multi_link(kwargs, expected):
             ),
             False,
         ),
-        # false: an IN_FLIGHT owner present
+        # false: a DOWNLOADING (active) owner present
         (
             flags_kwargs(
                 link_trees=(Tree.LIBRARY, Tree.TORRENTS),
-                owner_states=(TorrentState.IN_FLIGHT,),
+                owner_states=(TorrentState.DOWNLOADING,),
             ),
             False,
         ),
@@ -203,8 +202,8 @@ def test_multi_link(kwargs, expected):
         (flags_kwargs(link_trees=(Tree.TORRENTS,)), False),
     ],
 )
-def test_seedable_idle(kwargs, expected):
-    assert compute_flags(**kwargs).seedable_idle == expected
+def test_could_seed(kwargs, expected):
+    assert compute_flags(**kwargs).could_seed == expected
 
 
 @pytest.mark.parametrize(
@@ -218,3 +217,34 @@ def test_seedable_idle(kwargs, expected):
 )
 def test_links_outside_scope(kwargs, expected):
     assert compute_flags(**kwargs).links_outside_scope == expected
+
+
+@pytest.mark.parametrize(
+    "state,expected",
+    [
+        (TorrentState.DOWNLOADING, True),
+        (TorrentState.CHECKING, True),
+        (TorrentState.MOVING, True),
+        (TorrentState.QUEUED, True),
+        (TorrentState.SEEDING, False),
+        (TorrentState.STOPPED, False),
+        (TorrentState.ERROR, False),
+        (TorrentState.OTHER, False),
+    ],
+)
+def test_torrent_state_is_active(state, expected):
+    assert state.is_active is expected
+
+
+def test_error_owner_does_not_mark_in_progress():
+    # An ERRORed torrent should not be considered active, and given
+    # seeding_met=False should be classified as seeding hold rather than
+    # IN_PROGRESS (even if the torrent errored before it finished downloading)
+    status = provisionally_classify_status(
+        **status_kwargs(
+            link_trees=(Tree.TORRENTS,),
+            owner_states=(TorrentState.ERROR,),
+            seeding_met=False,
+        )
+    )
+    assert status is Blob.Status.SEEDING_HOLD

@@ -1,7 +1,7 @@
 import pytest
 from django.urls import reverse
 
-from scanner.models import Blob, BlobTorrent, Scan
+from scanner.models import Blob, BlobTorrent, Scan, Torrent, TorrentState
 from web import display
 from web.templatetags.janitor import binsize
 from web.tests.factories import make_blob, make_link, make_scan, make_torrent
@@ -18,10 +18,10 @@ def make_torrents_scan() -> Scan:
     """
     Build a scan with three torrents of varying reclaim math and states
 
-    Charlie (6000 reclaimable-if-removed, size 2000, seeding) owns two reclaimable blobs,
-    one cross-seeded with Alpha. Alpha (3000, size 8000, downloading, partial) also owns
-    an in-library blob. Bravo (0, size 4000, stopped) owns no blobs. One untracked
-    reclaimable blob exists outside any torrent.
+    Charlie (6000 reclaimable-if-removed, size 2000, seeding, fully reclaimable) owns two
+    reclaimable blobs, one cross-seeded with Alpha. Alpha (3000, size 8000, downloading,
+    partial) also owns an in-library blob. Bravo (0, size 4000, stopped, none) owns no
+    blobs. One untracked reclaimable blob exists outside any torrent.
     """
     scan = make_scan()
 
@@ -29,7 +29,8 @@ def make_torrents_scan() -> Scan:
         scan,
         hash_="c" * 40,
         name="Charlie",
-        state="stalledUP",
+        state=TorrentState.SEEDING,
+        reclaim_state=Torrent.ReclaimState.FULL,
         size=2000,
         bytes_reclaimable_if_removed=6000,
     )
@@ -37,16 +38,16 @@ def make_torrents_scan() -> Scan:
         scan,
         hash_="a" * 40,
         name="Alpha",
-        state="downloading",
+        state=TorrentState.DOWNLOADING,
+        reclaim_state=Torrent.ReclaimState.PARTIAL,
         size=8000,
         bytes_reclaimable_if_removed=3000,
-        partial_torrent=True,
     )
     make_torrent(
         scan,
         hash_="b" * 40,
         name="Bravo",
-        state="stoppedUP",
+        state=TorrentState.STOPPED,
         size=4000,
         bytes_reclaimable_if_removed=0,
     )
@@ -92,23 +93,26 @@ def test_blob_count_annotation(logged_in_client):
 
 
 @pytest.mark.django_db
-def test_fully_reclaimable_annotation(logged_in_client):
+def test_reclaim_state_stored_per_torrent(logged_in_client):
     make_torrents_scan()
     response = logged_in_client.get(reverse("torrents"))
-    fully = {t.name: t.fully_reclaimable for t in response.context["page_obj"]}
-    # Charlie's blobs are all reclaimable; Alpha has an in-library blob; Bravo has no
-    # blobs at all, which does not count as fully reclaimable
-    assert fully == {"Charlie": True, "Alpha": False, "Bravo": False}
-
-    content = response.content.decode()
-    assert content.count("Fully Reclaimable") == 1
+    states = {t.name: t.reclaim_state for t in response.context["page_obj"]}
+    # reclaim_state is now a stored column, not a runtime annotation
+    assert states == {
+        "Charlie": Torrent.ReclaimState.FULL,
+        "Alpha": Torrent.ReclaimState.PARTIAL,
+        "Bravo": Torrent.ReclaimState.NONE,
+    }
 
 
 @pytest.mark.django_db
-def test_partial_torrent_badge(logged_in_client):
+def test_reclaim_state_badges_rendered(logged_in_client):
     make_torrents_scan()
     content = logged_in_client.get(reverse("torrents")).content.decode()
-    assert "Partial Torrent" in content
+    # full -> Fully Reclaimable, partial -> Partial Torrent, none -> Not Reclaimable
+    assert content.count("Fully Reclaimable") == 1
+    assert content.count("Partially Reclaimable") == 1
+    assert content.count("Not Reclaimable") == 1
 
 
 @pytest.mark.django_db
@@ -132,36 +136,36 @@ def test_no_hash_on_page(logged_in_client):
 def test_seeding_badges(logged_in_client):
     make_torrents_scan()
     content = logged_in_client.get(reverse("torrents")).content.decode()
-    # stalledUP maps to Seeding, downloading to Downloading, stoppedUP falls back to the
-    # raw state string
+    # Normalized states render their enum labels; STOPPED now shows a real "Stopped"
+    # label rather than a raw client string.
     assert "Seeding" in content
     assert "Downloading" in content
-    assert "stoppedUP" in content
+    assert "Stopped" in content
 
 
 def test_torrent_state_badge_vocabulary():
-    assert display.torrent_state_badge("uploading") == {
+    assert display.torrent_state_badge(TorrentState.SEEDING.value) == {
         "label": "Seeding",
         "badge": "badge-success",
     }
-    assert display.torrent_state_badge("stalledUP")["label"] == "Seeding"
-    assert display.torrent_state_badge("metaDL") == {
+    assert display.torrent_state_badge(TorrentState.DOWNLOADING.value) == {
         "label": "Downloading",
         "badge": "badge-info",
     }
-    assert display.torrent_state_badge("missingFiles") == {
+    assert display.torrent_state_badge(TorrentState.CHECKING.value)["badge"] == "badge-info"
+    assert display.torrent_state_badge(TorrentState.ERROR.value) == {
         "label": "Error",
         "badge": "badge-error",
     }
+    assert display.torrent_state_badge(TorrentState.STOPPED.value)["label"] == "Stopped"
 
 
-def test_torrent_state_badge_fallback_renders_raw_state():
-    # States outside the vocabulary (or never seen before) render as-is, muted
-    assert display.torrent_state_badge("checkingResumeData") == {
-        "label": "checkingResumeData",
+def test_torrent_state_badge_fallback_for_unknown_value():
+    # A value that is not a TorrentState renders as-is in a muted badge
+    assert display.torrent_state_badge("someFutureState") == {
+        "label": "someFutureState",
         "badge": "badge-ghost",
     }
-    assert display.torrent_state_badge("someFutureState")["badge"] == "badge-ghost"
 
 
 @pytest.mark.django_db
@@ -285,7 +289,7 @@ def test_query_count(logged_in_client, django_assert_num_queries):
     # 3: context processor Scan.current()
     # 4: view Scan.current()
     # 5: paginator count
-    # 6: page of torrents (blob_count and fully_reclaimable inlined as annotations)
+    # 6: page of torrents (blob_count inlined as an annotation)
     with django_assert_num_queries(6):
         logged_in_client.get(reverse("torrents"))
 

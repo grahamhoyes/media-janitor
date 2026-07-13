@@ -208,7 +208,7 @@
                   </button>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
-                  <span class="badge badge-ghost badge-xs">{{ torrent.state }}</span>
+                  {% seeding_badge torrent %}
                   <button type="button"
                     class="btn btn-ghost btn-xs btn-square"
                     aria-label="Open torrent detail"

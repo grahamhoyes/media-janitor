@@ -510,11 +510,11 @@ def test_clear_filters_link_drops_filters_keeps_sort_and_page_size(logged_in_cli
 
 
 @pytest.mark.django_db
-def test_filter_chip_preserves_sort_and_resets_page(logged_in_client):
+def test_filter_option_preserves_sort_and_resets_page(logged_in_client):
     make_complete_scan()
     response = logged_in_client.get(reverse("reclaim") + "?page=2&page_size=2&sort=name&dir=asc")
     content = response.content.decode()
-    # The reclaimable status chip link keeps sort/dir/page_size, drops page, and adds status
+    # The reclaimable status option link keeps sort/dir/page_size, drops page, and adds status
     assert 'href="?page_size=2&amp;sort=name&amp;dir=asc&amp;status=reclaimable"' in content
 
 
@@ -538,7 +538,7 @@ def test_filtered_empty_shows_filter_message(logged_in_client):
     assert "This scan has no blobs" not in content
 
 
-# --- Torrent tracked/untracked chips ---
+# --- Torrent tracked/untracked options ---
 
 
 @pytest.mark.django_db
@@ -562,7 +562,7 @@ def test_filter_torrent_both_selected_does_not_narrow(logged_in_client):
     make_complete_scan()
     response = logged_in_client.get(reverse("reclaim"), {"torrent": ["tracked", "untracked"]})
     assert _sizes(response) == [6000, 4000, 3000, 2000, 1000]
-    # Both chips selected still counts as an active filter (clear control shows)
+    # Both options selected still counts as an active filter (clear control shows)
     assert response.context["any_filter"] is True
 
 
@@ -591,11 +591,11 @@ def test_invalid_torrent_filter_values_are_ignored(logged_in_client):
 
 
 @pytest.mark.django_db
-def test_torrent_chip_preserves_sort_and_resets_page(logged_in_client):
+def test_torrent_option_preserves_sort_and_resets_page(logged_in_client):
     make_complete_scan()
     response = logged_in_client.get(reverse("reclaim") + "?page=2&page_size=2&sort=name&dir=asc")
     content = response.content.decode()
-    # The Tracked chip link keeps sort/dir/page_size, drops page, and adds torrent=tracked
+    # The Tracked option link keeps sort/dir/page_size, drops page, and adds torrent=tracked
     assert 'href="?page_size=2&amp;sort=name&amp;dir=asc&amp;torrent=tracked"' in content
 
 

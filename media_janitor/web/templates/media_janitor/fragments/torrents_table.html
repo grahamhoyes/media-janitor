@@ -13,47 +13,12 @@
     - dir: sort direction (asc/desc)
     - sort_columns: dict of column name to display.SortColumn, which tells us what to do
                     when the column is clicked
-    - q: the active text search term
-    - matching_count / total_count: searched and scan-wide torrent counts
+    - filter_groups / q / any_filter / clear_url / matching_count / total_count: filter bar
+                    state, see fragments/filter_bar.html
 {% endcomment %}
 
-{# Search bar. Lives inside the fragment so its state and count re-render on every swap. #}
-<div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 border-b border-base-300 text-xs">
-  {# Text search over the torrent name, debounced. HTMX appends the live q value. #}
-  <label class="input input-sm w-64 items-center">
-    <span class="inline-flex items-center size-4 opacity-50">{% include "theme/icons/magnifying-glass.svg" %}</span>
-    {# ID is required so HTMX restores focus after a debounced automatic search #}
-    <input id="torrents-search"
-           type="search"
-           name="q"
-           value="{{ q }}"
-           placeholder="Search torrent name"
-           class="grow"
-           hx-get="{% querystring q=None page=None %}"
-           hx-trigger="input changed delay:300ms, search"
-           hx-target="#torrents-table"
-           hx-swap="innerHTML"
-           hx-push-url="true">
-  </label>
-
-  {% if q %}
-    {% querystring q=None page=None as clear_url %}
-    <a class="btn btn-sm btn-soft btn-error"
-       href="{{ clear_url }}"
-       hx-get="{{ clear_url }}"
-       hx-target="#torrents-table"
-       hx-swap="innerHTML"
-       hx-push-url="true">Clear search</a>
-  {% endif %}
-
-  <span class="text-base-content/60">
-    {% if q %}
-      <span class="font-medium text-base-content">{{ matching_count }}</span> matching, filtered from {{ total_count }} total
-    {% else %}
-      <span class="font-medium text-base-content">{{ total_count }}</span> total
-    {% endif %}
-  </span>
-</div>
+{# Filter bar. Lives inside the fragment so its active/count state re-renders on every swap. #}
+{% include "media_janitor/fragments/filter_bar.html" with hx_target="#torrents-table" search_id="torrents-search" search_placeholder="Search torrent name" %}
 
 <div class="overflow-x-auto">
   <table class="table table-xs w-full table-fixed min-w-175">
@@ -132,8 +97,8 @@
       <tbody>
         <tr>
           <td colspan="8" class="text-center text-base-content/60 py-6 text-xs">
-            {% if q %}
-              No torrents match the current search
+            {% if any_filter %}
+              No torrents match the current filters
             {% else %}
               This scan has no torrents
             {% endif %}

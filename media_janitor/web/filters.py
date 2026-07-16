@@ -1,158 +1,342 @@
-from typing import TypedDict
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import dataclass
+from dataclasses import replace as dataclass_replace
+from typing import ClassVar, Literal
 
 from django.db.models import Q, QuerySet
 from django.http import QueryDict
 
-from scanner.models import Blob, Kind
-from web.display import FLAG_VOCAB, STATUS_VOCAB, status_label
+from scanner.models import Kind, TorrentState
+from web.display import FLAG_VOCAB, RECLAIM_STATE_VOCAB, STATUS_VOCAB, status_label
 
-# Values for the torrent tracked/untracked chip pair, mapped to their labels. Backed by
-# the Blob.torrent_tracked boolean.
-TORRENT_TRACKED_OPTIONS: dict[str, str] = {
-    "tracked": "Tracked",
-    "untracked": "Untracked",
-}
+type ApplyStrategy = Callable[[QuerySet, set[str]], QuerySet]
 
 
-class FilterState(TypedDict):
+@dataclass(frozen=True, slots=True)
+class FilterOption:
     """
-    The validated, active filter selections parsed from the request query params
+    A value in a filter group
 
-    statuses, kinds, flags, and torrents hold only values present in their respective
-    vocabularies (unknown values are dropped). q is the stripped text search term, empty
-    when absent.
-    """
-
-    statuses: set[str]
-    kinds: set[str]
-    flags: set[str]
-    torrents: set[str]
-    q: str
-
-
-class FilterChip(TypedDict):
-    """
-    One toggleable filter chip, with its post-click selection precomputed
-
-    next_values is the list of values for this chip's param after toggling it, in canonical
-    vocabulary order, ready to feed the querystring tag. btn is the DaisyUI button color
-    class to use when the chip is active (its semantic color for status, btn-primary for
-    kinds and flags).
+    value, label, and btn are declared statically. active and url are empty
+    on the declaration and filled in per request by FilterSet before the option is rendered.
     """
 
     value: str
+    "The value this option filters for"
     label: str
-    btn: str
-    active: bool
-    next_values: list[str]
+    "Human-readable label shown on the option"
+    # The next line makes sure tailwind picks up the class names
+    # class="btn-primary"
+    btn: str = "btn-primary"
+    "DaisyUI button color class applied when the option is active (chips widget only)"
 
-
-def resolve_filters(params: QueryDict) -> FilterState:
+    # Filled in per request by FilterSet._prepare_group
+    active: bool = False
+    "Whether this option's value is currently selected"
+    url: str = ""
     """
-    Parse and validate the filter params from a request query dict
-
-    Repeated status / kind / flag params are collected and silently filtered down to known
-    vocabulary values, so an unknown value never filters and never errors. q is trimmed.
-
-    :param params: a request QueryDict (request.GET)
+    Querystring this option's link should request: the current query params with this
+    option's value toggled in or out of its param and the page cleared.
     """
-    return {
-        "statuses": {s for s in params.getlist("status") if s in STATUS_VOCAB},
-        "kinds": {k for k in params.getlist("kind") if k in Kind.values},
-        "flags": {f for f in params.getlist("flag") if f in FLAG_VOCAB},
-        "torrents": {t for t in params.getlist("torrent") if t in TORRENT_TRACKED_OPTIONS},
-        "q": (params.get("q") or "").strip(),
-    }
 
 
-def filters_active(filters: FilterState) -> bool:
-    """Whether any filter is currently applied"""
-    return bool(
-        filters["statuses"]
-        or filters["kinds"]
-        or filters["flags"]
-        or filters["torrents"]
-        or filters["q"]
+@dataclass(frozen=True)
+class FilterGroup:
+    """
+    A multi-value query param filter
+
+    Static apart from `options`, whose active/url fields are filled in per request.
+    """
+
+    param: str
+    "The query param this group reads and writes"
+    label: str
+    "Group label shown before its options in the filter bar"
+    tooltip: str
+    "Hover text explaining the group's filter semantics"
+    options: tuple[FilterOption, ...]
+    "The ordered options (values to filter by)"
+    apply: ApplyStrategy
+    "Filters a queryset by the selected values. Only called when at least one is selected."
+    widget: Literal["chips", "dropdown"] = "chips"
+    """
+    Filter bar rendering: "chips" for a joined button group, "dropdown" for a checkbox
+    dropdown (better for long lists of options).
+    """
+
+    @property
+    def selected_count(self) -> int:
+        """How many of the group's options are currently selected"""
+        return sum(option.active for option in self.options)
+
+
+def in_field(field: str) -> ApplyStrategy:
+    """
+    Apply strategy: the field must equal one of the selected values (ORed)
+
+    :param field: the model field the values filter against
+    """
+
+    def apply(qs: QuerySet, selected: set[str]) -> QuerySet:
+        return qs.filter(**{f"{field}__in": selected})
+
+    return apply
+
+
+def all_selected() -> ApplyStrategy:
+    """Apply strategy: each selected value names a boolean field that must be True (ANDed)"""
+
+    def apply(qs: QuerySet, selected: set[str]) -> QuerySet:
+        return qs.filter(**{flag: True for flag in selected})
+
+    return apply
+
+
+def boolean_field(field: str, true_value: str) -> ApplyStrategy:
+    """
+    Apply strategy: two strings options that map to a boolean field
+
+    Selecting one option filters to rows where the field matches it. Selecting
+    both applies no narrowing (ORing both is the same as applying neither,
+    and ANDing both boolean options makes no sense).
+
+    :param field: the boolean model field the pair filters against
+    :param true_value: the option value that maps to the field being True
+    """
+
+    def apply(qs: QuerySet, selected: set[str]) -> QuerySet:
+        if len(selected) == 1:
+            return qs.filter(**{field: true_value in selected})
+        return qs
+
+    return apply
+
+
+class FilterSet(ABC):
+    """
+    Parses, applies, and renders the option filters and text search for one list view
+
+    Subclasses must:
+        - Declare `groups`: The filter definitions
+        - Implement `search`: Applies a search string
+    """
+
+    groups: ClassVar[tuple[FilterGroup, ...]]
+
+    def __init__(self, params: QueryDict) -> None:
+        """
+        :param params: a request QueryDict (request.GET)
+        """
+        self._params = params
+        # Map valid query parameters to their values (values are a set, since filters
+        # can have multiple values)
+        self.active_options: dict[str, set[str]] = {}
+        for group in self.groups:
+            valid_values = {option.value for option in group.options}
+            self.active_options[group.param] = {
+                value for value in params.getlist(group.param) if value in valid_values
+            }
+        self.q = (params.get("q") or "").strip()
+
+    @abstractmethod
+    def search(self, qs: QuerySet, q: str) -> QuerySet:
+        """
+        Filter a queryset by the text search term
+
+        :param qs: the queryset to search
+        :param q: the non-empty, stripped search term
+        """
+        raise NotImplementedError
+
+    def apply(self, qs: QuerySet) -> QuerySet:
+        """
+        Filter a queryset by every active filter group and the text search (ANDed)
+
+        Groups with no selected values apply no filtering.
+
+        :param qs: the queryset to narrow
+        """
+        for group in self.groups:
+            selected = self.active_options[group.param]
+            if selected:
+                qs = group.apply(qs, selected)
+        if self.q:
+            qs = self.search(qs, self.q)
+        return qs
+
+    @property
+    def any_active(self) -> bool:
+        """Whether any filter group or the text search is currently applied"""
+        return bool(self.q) or any(self.active_options.values())
+
+    @property
+    def clear_url(self) -> str:
+        """Querystring clearing every filter param and the search, keeping sort and page size"""
+        overrides: dict[str, list[str] | None] = {group.param: None for group in self.groups}
+        overrides["q"] = None
+        return self._build_url(overrides)
+
+    def prepared_groups(self) -> list[FilterGroup]:
+        """Build the groups for the filter bar template, with options filled in"""
+        return [self._prepare_group(group) for group in self.groups]
+
+    def _prepare_group(self, group: FilterGroup) -> FilterGroup:
+        """
+        Return a copy of the group with each option's active flag and toggle URL filled in
+
+        Toggled selections keep the order of the group's options so the resulting
+        querystring is stable.
+
+        :param group: the group whose options to prepare
+        """
+        active_values = self.active_options[group.param]
+        all_values = [option.value for option in group.options]
+        prepared: list[FilterOption] = []
+        for option in group.options:
+            active = option.value in active_values
+            # Current values with this value toggled (removed if it's active, added if it's not)
+            toggled = active_values - {option.value} if active else active_values | {option.value}
+            next_values = [value for value in all_values if value in toggled]
+            prepared.append(
+                dataclass_replace(
+                    option, active=active, url=self._build_url({group.param: next_values})
+                )
+            )
+        return dataclass_replace(group, options=tuple(prepared))
+
+    def _build_url(self, overrides: dict[str, list[str] | None]) -> str:
+        """
+        Build a querystring with params in `overrides` replaced
+
+        Every other query param is preserved. The page param is always dropped since a
+        filter change invalidates the page number. An override of None or [] removes that
+        param entirely.
+
+        :param overrides: param name to its full new value list, or None to remove it
+        """
+        query = self._params.copy()
+        # Always remove the page, since changing filters should bring us back to the first page
+        query.pop("page", None)
+        for param, values in overrides.items():
+            query.pop(param, None)
+            if values:
+                query.setlist(param, values)
+        return f"?{query.urlencode()}"
+
+
+class BlobFilters(FilterSet):
+    """Filters for the reclaim list's blobs"""
+
+    groups = (
+        FilterGroup(
+            param="status",
+            label="Status",
+            tooltip="File status (ORed: shows any of the selected statuses)",
+            options=tuple(
+                FilterOption(
+                    value=key,
+                    label=status_label(key),
+                    btn=vocab["btn"],
+                )
+                for key, vocab in STATUS_VOCAB.items()
+            ),
+            apply=in_field("status"),
+        ),
+        FilterGroup(
+            param="kind",
+            label="Kind",
+            tooltip="File kind (ORed: shows any of the selected kinds)",
+            options=tuple(FilterOption(value=value, label=label) for value, label in Kind.choices),
+            apply=in_field("kind"),
+        ),
+        FilterGroup(
+            param="flag",
+            label="Flags",
+            tooltip="File flags (ANDed: shows files with all of the selected flags)",
+            options=tuple(
+                FilterOption(value=attr, label=props["label"]) for attr, props in FLAG_VOCAB.items()
+            ),
+            apply=all_selected(),
+        ),
+        FilterGroup(
+            param="torrent",
+            label="Torrent",
+            tooltip=(
+                "Whether the file belongs to a torrent "
+                "(ORed: shows files of either selected option)"
+            ),
+            options=(
+                FilterOption(value="tracked", label="Tracked"),
+                FilterOption(value="untracked", label="Untracked"),
+            ),
+            apply=boolean_field(field="torrent_tracked", true_value="tracked"),
+        ),
     )
 
+    def search(self, qs: QuerySet, q: str) -> QuerySet:
+        """
+        Match a link name or path case-insensitively
 
-def apply_filters(qs: QuerySet[Blob], filters: FilterState) -> QuerySet[Blob]:
-    """
-    Narrow a blob queryset by the active filters
+        The search joins against links, so distinct() is required to avoid duplicate
+        blobs for blobs that have multiple links.
 
-    Statuses OR within themselves (status__in), kinds OR within themselves, flags AND (each
-    selected flag must be True), torrent tracked/untracked OR within itself (both or
-    neither selected means no narrowing), and the text search matches a link name or path
-    case-insensitively. AND across the filter types. The text search joins the links
-    relation, so distinct() collapses the duplicate blob rows it can produce.
-
-    :param qs: the blob queryset to narrow
-    :param filters: the validated active filters
-    """
-    if filters["statuses"]:
-        qs = qs.filter(status__in=filters["statuses"])
-    if filters["kinds"]:
-        qs = qs.filter(kind__in=filters["kinds"])
-    for flag in filters["flags"]:
-        qs = qs.filter(**{flag: True})
-    if len(filters["torrents"]) == 1:
-        qs = qs.filter(torrent_tracked="tracked" in filters["torrents"])
-    if filters["q"]:
-        qs = qs.filter(
-            Q(links__name__icontains=filters["q"]) | Q(links__path__icontains=filters["q"])
-        ).distinct()
-    return qs
+        :param qs: the blob queryset to narrow
+        :param q: the non-empty, stripped search term
+        """
+        return qs.filter(Q(links__name__icontains=q) | Q(links__path__icontains=q)).distinct()
 
 
-def _build_chips(options: list[tuple[str, str, str]], selected: set[str]) -> list[FilterChip]:
-    """
-    Build the toggle chips for one filter param
+class TorrentFilters(FilterSet):
+    """Filters for the torrents list"""
 
-    Each chip records whether its value is currently selected and the precomputed
-    next_values list (the selection after toggling this chip), in the canonical order of
-    options so the resulting querystring is stable.
+    groups = (
+        FilterGroup(
+            param="state",
+            label="State",
+            tooltip="Torrent state (ORed: shows torrents in any of the selected states)",
+            options=tuple(
+                FilterOption(value=value, label=label) for value, label in TorrentState.choices
+            ),
+            apply=in_field("state"),
+            widget="dropdown",
+        ),
+        FilterGroup(
+            param="reclaim",
+            label="Reclaimable",
+            tooltip=(
+                "Whether removing the torrent reclaims space "
+                "(ORed: shows any of the selected options)"
+            ),
+            options=tuple(
+                FilterOption(
+                    value=key,
+                    label=vocab["short_label"],
+                    btn=vocab["btn"],
+                )
+                for key, vocab in RECLAIM_STATE_VOCAB.items()
+            ),
+            apply=in_field("reclaim_state"),
+        ),
+        FilterGroup(
+            param="seeding",
+            label="Seeding Met",
+            tooltip=(
+                "Whether seeding requirements have been met (ORed: shows either selected option)"
+            ),
+            options=(
+                FilterOption(value="yes", label="Yes"),
+                FilterOption(value="no", label="No"),
+            ),
+            apply=boolean_field("seeding_met", true_value="yes"),
+        ),
+    )
 
-    :param options: ordered (value, label, active button class) tuples for this vocabulary
-    :param selected: the currently selected values for this param
-    """
-    all_values = [value for value, _label, _btn in options]
-    chips: list[FilterChip] = []
-    for value, label, btn in options:
-        active = value in selected
-        toggled = selected - {value} if active else selected | {value}
-        next_values = [v for v in all_values if v in toggled]
-        chips.append(
-            {
-                "value": value,
-                "label": label,
-                "btn": btn,
-                "active": active,
-                "next_values": next_values,
-            }
-        )
-    return chips
+    def search(self, qs: QuerySet, q: str) -> QuerySet:
+        """
+        Match the torrent name case-insensitively
 
-
-def status_chips(selected: set[str]) -> list[FilterChip]:
-    """Build the status filter chips, colored by the status vocabulary when active"""
-    options = [(key, status_label(key), vocab["btn"]) for key, vocab in STATUS_VOCAB.items()]
-    return _build_chips(options, selected)
-
-
-def kind_chips(selected: set[str]) -> list[FilterChip]:
-    """Build the kind filter chips, using the primary color when active"""
-    # The btn-primary class is compiled via the safelist comment in web.display.
-    options = [(value, label, "btn-primary") for value, label in Kind.choices]
-    return _build_chips(options, selected)
-
-
-def flag_chips(selected: set[str]) -> list[FilterChip]:
-    """Build the flag filter chips (FLAG_VOCAB order), using the primary color when active"""
-    options = [(attr, props["label"], "btn-primary") for attr, props in FLAG_VOCAB.items()]
-    return _build_chips(options, selected)
-
-
-def torrent_chips(selected: set[str]) -> list[FilterChip]:
-    """Build the torrent tracked/untracked chips, using the primary color when active"""
-    options = [(value, label, "btn-primary") for value, label in TORRENT_TRACKED_OPTIONS.items()]
-    return _build_chips(options, selected)
+        :param qs: the torrent queryset to narrow
+        :param q: the non-empty, stripped search term
+        """
+        return qs.filter(name__icontains=q)

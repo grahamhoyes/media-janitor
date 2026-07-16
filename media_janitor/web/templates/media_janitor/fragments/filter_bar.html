@@ -1,0 +1,123 @@
+{% comment %}
+  Generic filter bar for the list tables: filter-group controls, text search, clear control,
+  and match counts. Included by each table fragment, which passes:
+
+    - hx_target: CSS selector of the table container to swap
+    - search_id: input id so HTMX restores focus after a search
+    - search_placeholder: placeholder text for the search input
+
+  From the view context (built by views.SortedListView):
+    - filter_groups: list of prepared filters.FilterGroup to render, each with prebuilt toggle
+                     URLs. A group's widget picks a segmented button group ("chips") or a
+                     checkbox dropdown ("dropdown", better for lots of options)
+    - q: the active text search term
+    - any_filter: whether any filter or search is active
+    - clear_url: querystring that clears every filter and the search
+    - matching_count / total_count: filtered and total row counts
+{% endcomment %}
+<div class="flex flex-col gap-3 px-4 py-3 border-b border-base-300 text-xs">
+  {% if filter_groups %}
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+      {% for group in filter_groups %}
+        <div class="flex items-center gap-2">
+          <span class="text-base-content/50 cursor-help" title="{{ group.tooltip }}">{{ group.label }}</span>
+          {% if group.widget == "dropdown" %}
+            {% comment %}
+              Dropdown with checkboxes for filters with too many options to display as
+              inline buttons. Each item is a link to the filtered page, the checkbox
+              is display-only (pointer-events-none).
+
+              The dropdown opens on focus, which the table swap would otherwise destroy,
+              closing the menu after every selection. To keep it open, clicks move
+              the focus to the button div, which htmx then restores focus to after the
+              swap since it has an id.
+            {% endcomment %}
+            <div class="dropdown"
+              x-data
+              {# Removes focus (hiding the dropdown) on escape #}
+              @keydown.escape="document.activeElement?.blur()">
+              <div id="filter-{{ group.param }}-trigger"
+                   x-ref="trigger"
+                   tabindex="0"
+                   role="button"
+                   class="btn btn-xs {% if group.selected_count %}btn-primary{% else %}btn-soft{% endif %}">
+                {% if group.selected_count %}
+                  {{ group.selected_count }} selected
+                {% else %}
+                  Any
+                {% endif %}
+                <span class="size-3">{% include "theme/icons/chevron-down.svg" %}</span>
+              </div>
+              <ul tabindex="0"
+                  class="animate-none dropdown-content menu bg-base-100 rounded-box border border-base-300 shadow-sm z-20 w-48 p-2">
+                {% for option in group.options %}
+                  <li>
+                    <a href="{{ option.url }}"
+                       @click="$refs.trigger.focus()"
+                       hx-get="{{ option.url }}"
+                       hx-target="{{ hx_target }}"
+                       hx-swap="innerHTML"
+                       hx-push-url="true">
+                      <input type="checkbox"
+                             class="checkbox checkbox-xs pointer-events-none"
+                             tabindex="-1"
+                             {% if option.active %}checked{% endif %}>
+                      {{ option.label }}
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% else %}
+            {# Default joined list of buttons when there aren't enough to warrant a dropdown #}
+            <div class="join">
+              {% for option in group.options %}
+                <a class="btn btn-xs join-item {% if option.active %}{{ option.btn }}{% else %}btn-soft{% endif %}"
+                   href="{{ option.url }}"
+                   hx-get="{{ option.url }}"
+                   hx-target="{{ hx_target }}"
+                   hx-swap="innerHTML"
+                   hx-push-url="true">{{ option.label }}</a>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+    {# Text search, debounced. HTMX appends the live q value to the hx-get URL. #}
+    <label class="input input-sm w-64 items-center">
+      <span class="inline-flex items-center size-4 opacity-50">{% include "theme/icons/magnifying-glass.svg" %}</span>
+      <input id="{{ search_id }}"
+             type="search"
+             name="q"
+             value="{{ q }}"
+             placeholder="{{ search_placeholder }}"
+             class="grow"
+             hx-get="{% querystring q=None page=None %}"
+             hx-trigger="input changed delay:300ms, search"
+             hx-target="{{ hx_target }}"
+             hx-swap="innerHTML"
+             hx-push-url="true">
+    </label>
+
+    {% if any_filter %}
+      <a class="btn btn-sm btn-soft btn-error"
+         href="{{ clear_url }}"
+         hx-get="{{ clear_url }}"
+         hx-target="{{ hx_target }}"
+         hx-swap="innerHTML"
+         hx-push-url="true">Clear filters</a>
+    {% endif %}
+
+    <span class="text-base-content/60">
+      {% if any_filter %}
+        <span class="font-medium text-base-content">{{ matching_count }}</span> matching, filtered from {{ total_count }} total
+      {% else %}
+        <span class="font-medium text-base-content">{{ total_count }}</span> total
+      {% endif %}
+    </span>
+  </div>
+</div>

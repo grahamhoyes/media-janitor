@@ -118,7 +118,7 @@
       {% endcomment %}
       <div class="drawer drawer-end"
            x-data
-           @htmx:after-swap.window="if ($event.detail.target.id === 'drawer') $refs.drawerToggle.checked = true"
+           @htmx:after-swap.window="if ($event.detail.target?.id === 'drawer') $refs.drawerToggle.checked = true"
            @keydown.escape.window="$refs.drawerToggle.checked = false">
         <input id="main-drawer"
                x-ref="drawerToggle"

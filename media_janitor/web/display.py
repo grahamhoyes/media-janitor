@@ -100,21 +100,28 @@ def torrent_state_badge(state: str) -> dict[str, str]:
     return {"label": member.label, "badge": TORRENT_STAGE_BADGE[member]}
 
 
-# Reclaim State display styling and labels
+# Reclaim State display styling and labels. The btn classes are covered by the
+# comment on STATUS_VOCAB.
 RECLAIM_STATE_VOCAB: dict[str, dict[str, str]] = {
     Torrent.ReclaimState.FULL: {
         "label": "Fully Reclaimable",
+        "short_label": "Full",
         "badge": "badge-success",
+        "btn": "btn-success",
         "tooltip": "Every file in this torrent can be reclaimed",
     },
     Torrent.ReclaimState.PARTIAL: {
         "label": "Partially Reclaimable",
+        "short_label": "Partial",
         "badge": "badge-info",
+        "btn": "btn-info",
         "tooltip": "This torrent has both reclaimable and non-reclaimable files",
     },
     Torrent.ReclaimState.NONE: {
         "label": "Not Reclaimable",
+        "short_label": "None",
         "badge": "badge-warning",
+        "btn": "btn-warning",
         "tooltip": "This torrent has no reclaimable files",
     },
 }

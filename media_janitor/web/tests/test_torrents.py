@@ -222,12 +222,12 @@ def test_search_matches_name_case_insensitive(logged_in_client):
 
 
 @pytest.mark.django_db
-def test_search_empty_shows_search_message(logged_in_client):
+def test_search_empty_shows_filter_message(logged_in_client):
     make_torrents_scan()
     response = logged_in_client.get(reverse("torrents"), {"q": "zzz"})
     assert _names(response) == []
     content = response.content.decode()
-    assert "No torrents match the current search" in content
+    assert "No torrents match the current filters" in content
     assert "This scan has no torrents" not in content
 
 
@@ -300,6 +300,133 @@ def test_search_query_count(logged_in_client, django_assert_num_queries):
     # One extra query over the unsearched case: the scan-wide torrent total
     with django_assert_num_queries(7):
         logged_in_client.get(reverse("torrents"), {"q": "char"})
+
+
+# --- Filtering ---
+
+
+def make_seeding_scan() -> Scan:
+    """
+    Build a scan with two torrents that differ only in seeding_met
+
+    Met (1000 reclaimable-if-removed, seeding_met True) sorts ahead of Pending
+    (0, seeding_met False) under the default reclaimable-desc order.
+    """
+    scan = make_scan()
+    make_torrent(
+        scan,
+        hash_="1" * 40,
+        name="Met",
+        seeding_met=True,
+        bytes_reclaimable_if_removed=1000,
+    )
+    make_torrent(
+        scan,
+        hash_="2" * 40,
+        name="Pending",
+        seeding_met=False,
+        bytes_reclaimable_if_removed=0,
+    )
+    return scan
+
+
+@pytest.mark.django_db
+def test_filter_state_single(logged_in_client):
+    make_torrents_scan()
+    response = logged_in_client.get(reverse("torrents"), {"state": TorrentState.SEEDING.value})
+    assert _names(response) == ["Charlie"]
+
+
+@pytest.mark.django_db
+def test_filter_state_multiple_is_or(logged_in_client):
+    make_torrents_scan()
+    response = logged_in_client.get(
+        reverse("torrents"),
+        {"state": [TorrentState.SEEDING.value, TorrentState.STOPPED.value]},
+    )
+    # OR within state; default reclaimable desc order (Charlie 6000, Bravo 0)
+    assert _names(response) == ["Charlie", "Bravo"]
+
+
+@pytest.mark.django_db
+def test_filter_reclaim_state_single(logged_in_client):
+    make_torrents_scan()
+    response = logged_in_client.get(
+        reverse("torrents"), {"reclaim": Torrent.ReclaimState.PARTIAL.value}
+    )
+    assert _names(response) == ["Alpha"]
+
+
+@pytest.mark.django_db
+def test_filter_reclaim_state_multiple_is_or(logged_in_client):
+    make_torrents_scan()
+    response = logged_in_client.get(
+        reverse("torrents"),
+        {"reclaim": [Torrent.ReclaimState.FULL.value, Torrent.ReclaimState.PARTIAL.value]},
+    )
+    assert _names(response) == ["Charlie", "Alpha"]
+
+
+@pytest.mark.django_db
+def test_filter_seeding_yes(logged_in_client):
+    make_seeding_scan()
+    response = logged_in_client.get(reverse("torrents"), {"seeding": "yes"})
+    assert _names(response) == ["Met"]
+
+
+@pytest.mark.django_db
+def test_filter_seeding_no(logged_in_client):
+    make_seeding_scan()
+    response = logged_in_client.get(reverse("torrents"), {"seeding": "no"})
+    assert _names(response) == ["Pending"]
+
+
+@pytest.mark.django_db
+def test_filter_seeding_both_selected_does_not_narrow(logged_in_client):
+    make_seeding_scan()
+    response = logged_in_client.get(reverse("torrents"), {"seeding": ["yes", "no"]})
+    assert _names(response) == ["Met", "Pending"]
+    # Both options selected still counts as an active filter (clear control shows)
+    assert response.context["any_filter"] is True
+
+
+@pytest.mark.django_db
+def test_filter_combines_state_and_search(logged_in_client):
+    make_torrents_scan()
+    # AND across filter and search: seeding AND name "charlie" matches Charlie
+    match = logged_in_client.get(
+        reverse("torrents"), {"state": TorrentState.SEEDING.value, "q": "charlie"}
+    )
+    assert _names(match) == ["Charlie"]
+
+    # downloading AND name "charlie" matches nothing (Charlie is seeding)
+    empty = logged_in_client.get(
+        reverse("torrents"), {"state": TorrentState.DOWNLOADING.value, "q": "charlie"}
+    )
+    assert _names(empty) == []
+
+
+@pytest.mark.django_db
+def test_invalid_filter_values_are_ignored(logged_in_client):
+    make_torrents_scan()
+    response = logged_in_client.get(
+        reverse("torrents"), {"state": "bogus", "reclaim": "nope", "seeding": "maybe"}
+    )
+    assert response.status_code == 200
+    # Unknown values drop out, leaving no active filter and the full list
+    assert response.context["any_filter"] is False
+    assert _names(response) == ["Charlie", "Alpha", "Bravo"]
+
+
+@pytest.mark.django_db
+def test_result_count_filtered_shows_matching_and_total(logged_in_client):
+    make_torrents_scan()
+    response = logged_in_client.get(reverse("torrents"), {"state": TorrentState.SEEDING.value})
+    assert response.context["matching_count"] == 1
+    assert response.context["total_count"] == 3
+    content = response.content.decode()
+    assert ">1</span>" in content
+    assert "matching, filtered from 3 total" in content
 
 
 # --- Expanded blob rows fragment ---

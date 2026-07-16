@@ -61,6 +61,8 @@ class TorrentDraft:
     tracker: str
     private: bool
     ratio: float
+    uploaded: int
+    "Total bytes uploaded"
     completed_on: datetime | None
     """
     When the torrent completed downloading, ie when seeding started
@@ -232,6 +234,7 @@ def build_scan_model(
             tracker=t.tracker,
             private=t.private,
             ratio=t.ratio,
+            uploaded=t.uploaded,
             completed_on=t.completed_on,
             added_on=t.added_on,
             last_activity=t.last_activity,

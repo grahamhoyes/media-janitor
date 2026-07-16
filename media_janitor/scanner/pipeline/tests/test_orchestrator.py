@@ -89,6 +89,7 @@ def _foo_torrent_snapshot() -> TorrentSnapshot:
         tracker="https://tracker.example/announce",
         private=True,
         ratio=10.0,
+        uploaded=len(FOO_CONTENT) * 10,
         completed_on=None,
         added_on=None,
         last_activity=None,

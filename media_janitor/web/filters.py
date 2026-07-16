@@ -408,6 +408,8 @@ class TorrentFilters(FilterSet):
         "reclaimable": SortField("bytes_reclaimable_if_removed", "desc"),
         "name": SortField("name", "asc"),
         "size": SortField("size", "desc"),
+        "uploaded": SortField("uploaded", "desc"),
+        "ratio": SortField("ratio", "desc"),
     }
     default_sort = "reclaimable"
 

@@ -40,6 +40,8 @@ class TorrentSnapshot:
     private: bool
 
     ratio: float
+    uploaded: int
+    "Total bytes uploaded"
     completed_on: datetime | None
     added_on: datetime | None
     last_activity: datetime | None

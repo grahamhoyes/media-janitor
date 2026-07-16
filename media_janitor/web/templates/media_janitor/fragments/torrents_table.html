@@ -30,7 +30,9 @@
         <th class="w-26">Seeding</th>
         <th class="w-14">Blobs</th>
         {% sort_header sort_columns.size "Size" hx_target="#torrents-table" th_class="w-22" %}
-        {% sort_header sort_columns.reclaimable "Reclaimable Size" hx_target="#torrents-table" th_class="w-31" %}
+        {% sort_header sort_columns.uploaded "Uploaded" hx_target="#torrents-table" th_class="w-22" %}
+        {% sort_header sort_columns.ratio "Ratio" hx_target="#torrents-table" th_class="w-16" %}
+        {% sort_header sort_columns.reclaimable "Reclaimable Size" hx_target="#torrents-table" th_class="w-33" %}
         <th class="w-40"
             title="Whether the torrent can be removed to reclaim space">Reclaimable?</th>
         {# Action column #}
@@ -71,6 +73,12 @@
           {# Size #}
           <td class="text-right font-mono whitespace-nowrap">{{ torrent.size|binsize }}</td>
 
+          {# Uploaded #}
+          <td class="text-right font-mono whitespace-nowrap">{{ torrent.uploaded|binsize }}</td>
+
+          {# Ratio #}
+          <td class="text-right font-mono whitespace-nowrap">{{ torrent.ratio|floatformat:2 }}</td>
+
           {# Reclaimable space if removed #}
           <td class="text-right font-mono whitespace-nowrap">{{ torrent.bytes_reclaimable_if_removed|binsize }}</td>
 
@@ -88,7 +96,7 @@
 
         {# Hidden detail row: filled once by the expand control's lazy hx-get #}
         <tr x-show="open" x-cloak>
-          <td colspan="8" class="p-0" id="torrent-blobs-{{ torrent.pk }}">
+          <td colspan="10" class="p-0" id="torrent-blobs-{{ torrent.pk }}">
             <div class="text-center text-base-content/60 py-4 text-xs">Loading...</div>
           </td>
         </tr>
@@ -96,7 +104,7 @@
     {% empty %}
       <tbody>
         <tr>
-          <td colspan="8" class="text-center text-base-content/60 py-6 text-xs">
+          <td colspan="10" class="text-center text-base-content/60 py-6 text-xs">
             {% if any_filter %}
               No torrents match the current filters
             {% else %}

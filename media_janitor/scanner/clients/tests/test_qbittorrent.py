@@ -26,6 +26,7 @@ SINGLE_FILE_TORRENT = {
     "tracker": "https://tracker.example/announce",
     "private": True,
     "ratio": 2.5,
+    "uploaded": 2500,
     "completion_on": 1_700_000_000,
     "added_on": 1_699_000_000,
     "last_activity": 1_700_500_000,
@@ -42,6 +43,7 @@ MULTI_FILE_TORRENT = {
     "tracker": "",
     # private is intentionally omitted: metadata not yet fetched -> defaults to False
     "ratio": 0.3,
+    "uploaded": 1500,
     "completion_on": 0,  # undefined -> None
     "added_on": 0,  # undefined -> None
     "last_activity": 0,  # undefined -> None
@@ -99,6 +101,7 @@ async def test_gather_happy_path():
     assert single.tracker == "https://tracker.example/announce"
     assert single.private is True
     assert single.ratio == 2.5
+    assert single.uploaded == 2500
     assert single.completed_on == datetime.fromtimestamp(1_700_000_000, tz=UTC)
     assert single.added_on == datetime.fromtimestamp(1_699_000_000, tz=UTC)
     assert single.last_activity == datetime.fromtimestamp(1_700_500_000, tz=UTC)
@@ -289,6 +292,7 @@ async def test_torrent_outside_data_root_skipped():
         "tracker": "https://tracker.example/announce",
         "private": True,
         "ratio": 1.0,
+        "uploaded": 1000,
         "completion_on": 1_700_000_000,
         "added_on": 1_699_000_000,
         "last_activity": 1_700_500_000,

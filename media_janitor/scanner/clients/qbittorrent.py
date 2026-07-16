@@ -333,6 +333,7 @@ class QBittorrentClient(DownloadClient):
             # private may be absent before the torrent's metadata is fetched
             private=t.get("private", False),
             ratio=t["ratio"],
+            uploaded=t["uploaded"],
             # NOTE: the API field is "completion_on" (epoch seconds).
             completed_on=self._epoch_to_datetime(t["completion_on"]),
             added_on=self._epoch_to_datetime(t["added_on"]),

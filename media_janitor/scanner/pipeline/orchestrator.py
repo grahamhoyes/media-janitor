@@ -181,6 +181,7 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
                     tracker=t.tracker,
                     private=t.private,
                     ratio=t.ratio,
+                    uploaded=t.uploaded,
                     completed_on=t.completed_on,
                     added_on=t.added_on,
                     last_activity=t.last_activity,

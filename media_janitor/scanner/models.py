@@ -349,6 +349,7 @@ class Torrent(models.Model):
         default=False, help_text="Whether the torrent is from a private tracker"
     )
     ratio = models.FloatField()
+    uploaded = models.BigIntegerField(default=0, help_text="Amount of data uploaded in bytes")
     completed_on = models.DateTimeField(
         null=True,
         blank=True,

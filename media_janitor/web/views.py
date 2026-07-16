@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import ClassVar
 
 from django.contrib.auth.decorators import login_required
@@ -24,7 +23,6 @@ from django_htmx.middleware import HtmxDetails
 
 from scanner.models import Config, Link, Scan
 from web import display
-from web.display import SortColumn
 from web.filters import BlobFilters, FilterSet, TorrentFilters
 
 
@@ -34,22 +32,6 @@ class HtmxHttpRequest(HttpRequest):
     htmx: HtmxDetails
 
 
-@dataclass(frozen=True)
-class SortField:
-    """
-    A sortable field definition
-
-    Different from display.SortColumn, which is the state that gets passed to the templates
-    and depends on the actual active sort.
-
-    :param field: queryset field or annotation to order by
-    :param default_dir: direction ("asc" or "desc") applied when the column is first sorted
-    """
-
-    field: str
-    default_dir: str
-
-
 class SortedListView(LoginRequiredMixin, View, ABC):
     """
     Generic view for filtered, sorted, and paginated list views
@@ -57,10 +39,9 @@ class SortedListView(LoginRequiredMixin, View, ABC):
     Renders the full page on a normal request and only the table fragment on an HTMX
     request, so filter/sort/page controls can swap the table alone.
 
+
     Subclasses declare:
-        - SORTS: Sort key to its SortField (field/annotation and default direction)
-        - DEFAULT_SORT: Default sort key, applied when no valid sort is requested
-        - FILTERSET_CLASS: Filterset class
+        - FILTERSET_CLASS: FilterSet class (filters, search, and sort)
         - PAGE_TEMPLATE: Template for full-page requests
         - FRAGMENT_TEMPLATE: Template for HTMX requests
 
@@ -71,20 +52,10 @@ class SortedListView(LoginRequiredMixin, View, ABC):
 
     DEFAULT_PAGE_SIZE = 50
 
-    # Sortable query params, mapped to the queryset field (or annotation) and default direction
-    # they order by
-    SORTS: ClassVar[dict[str, SortField]]
-    DEFAULT_SORT: ClassVar[str]
-
     FILTERSET_CLASS: ClassVar[type[FilterSet]]
 
     PAGE_TEMPLATE: ClassVar[str]
     FRAGMENT_TEMPLATE: ClassVar[str]
-
-    @property
-    def default_dir(self) -> str:
-        """Direction used for the default (unsorted) ordering"""
-        return self.SORTS[self.DEFAULT_SORT].default_dir
 
     def get(self, request: HtmxHttpRequest) -> HttpResponse:
         """
@@ -98,16 +69,9 @@ class SortedListView(LoginRequiredMixin, View, ABC):
             return render(request, self.get_template_name(request))
 
         page_size = self._coerce_page_size(request.GET.get("page_size"))
-        sort, direction = self._resolve_sort(request)
         filterset = self.FILTERSET_CLASS(request.GET)
 
-        # sort/direction are None when nothing valid is requested; fall back to the defaults
-        # for building the queryset, but keep the originals for the header/indicator state.
-        active_sort = sort or self.DEFAULT_SORT
-        active_dir = direction or self.default_dir
-
-        rows = self.get_queryset(scan, active_sort, filterset)
-        rows = self._apply_sort(rows, active_sort, active_dir)
+        rows = filterset.order(self.get_queryset(scan, filterset))
 
         paginator = Paginator(rows, page_size)
         # get_page() is forgiving: invalid or out-of-range pages return the first or last page
@@ -121,9 +85,9 @@ class SortedListView(LoginRequiredMixin, View, ABC):
 
         context = {
             "page_obj": page_obj,
-            "sort": sort,
-            "dir": direction,
-            "sort_columns": self._sort_columns(sort, direction),
+            "sort": filterset.sort,
+            "dir": filterset.direction,
+            "sort_columns": filterset.sort_columns(),
             "filter_groups": filterset.prepared_groups(),
             "q": filterset.q,
             "any_filter": any_filter,
@@ -151,31 +115,17 @@ class SortedListView(LoginRequiredMixin, View, ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def get_queryset(self, scan: Scan, sort: str, filterset: FilterSet) -> QuerySet:
+    def get_queryset(self, scan: Scan, filterset: FilterSet) -> QuerySet:
         """
-        Build the filtered queryset for a scan
+        Build the filtered queryset for a scan by applying the filterset to base_queryset()
 
-        The base view applies the ordering afterwards, so this only needs
-        to annotate whatever field the active sort's SortField references.
+        Sorting is applied by the base view after filtering. Override this method to
+        attach annotations needed for sorting by the field in filterset.active_sort.
 
         :param scan: the scan whose rows to list
-        :param sort: a validated key from SORTS
-        :param filterset: the parsed filters
+        :param filterset: the parsed filters and sort
         """
-        raise NotImplementedError
-
-    def _apply_sort(self, qs: QuerySet, sort: str, direction: str) -> QuerySet:
-        """
-        Order a queryset by a sort column, tie-breaking on pk so pagination is stable
-
-        :param qs: the queryset to order
-        :param sort: a validated key from SORTS
-        :param direction: "asc" or "desc"
-        """
-        field = self.SORTS[sort].field
-        prefix = "-" if direction == "desc" else ""
-        return qs.order_by(f"{prefix}{field}", "pk")
+        return filterset.apply(self.base_queryset(scan))
 
     def _coerce_page_size(self, raw: str | None) -> int:
         """
@@ -191,85 +141,17 @@ class SortedListView(LoginRequiredMixin, View, ABC):
             return self.DEFAULT_PAGE_SIZE
         return value if value > 0 else self.DEFAULT_PAGE_SIZE
 
-    def _resolve_sort(self, request: HttpRequest) -> tuple[str | None, str | None]:
-        """
-        Resolve the active (sort, dir) pair from the request query params
-
-        Returns (None, None) when no valid sort is requested. A valid sort key with a
-        missing or malformed direction falls back to that column's default direction.
-
-        :param request: the incoming request
-        """
-        sort = request.GET.get("sort")
-        if not sort or sort not in self.SORTS:
-            return None, None
-
-        direction = request.GET.get("dir")
-        if direction not in ("asc", "desc"):
-            direction = self.SORTS[sort].default_dir
-
-        return sort, direction
-
-    def _sort_columns(self, sort: str | None, direction: str | None) -> dict[str, SortColumn]:
-        """
-        Build the three-state header state for each sortable column
-
-        Clicking a column cycles none -> default direction -> other direction -> none. Each
-        column records its current direction (dir, empty when the column is not the active
-        sort, which also drives whether the indicator shows), and the (next_sort, next_dir)
-        its header link should request next. The clearing step emits None for both so the
-        querystring tag drops the params, returning to the default ordering.
-
-        :param sort: the active sort key, or None when unsorted
-        :param direction: the active sort direction, or None when unsorted
-        """
-        columns: dict[str, SortColumn] = {}
-        for key, spec in self.SORTS.items():
-            default_dir = spec.default_dir
-            other_dir = "asc" if default_dir == "desc" else "desc"
-            active = key == sort
-
-            next_sort: str | None
-            next_dir: str | None
-            if not active:
-                # Not sorted, so sort by the default direction
-                next_sort, next_dir = key, default_dir
-            elif direction == default_dir:
-                # Sorted by the default direction, so sort the other way
-                next_sort, next_dir = key, other_dir
-            else:
-                # Sorted by the second direction, so clear the sort. None drops the
-                # sort/dir params from the header link, returning to the default ordering.
-                next_sort, next_dir = None, None
-
-            columns[key] = {
-                "dir": (direction or "") if active else "",
-                "next_sort": next_sort,
-                "next_dir": next_dir,
-            }
-        return columns
-
 
 class ReclaimListView(SortedListView):
     """Dense table of the current scan's blobs"""
-
-    # Sortable columns, mapped to the queryset field (or annotation) and default direction
-    # they order by. The annotation-backed keys (name, status) get their annotation attached
-    # only when that sort is active.
-    SORTS = {
-        "size": SortField("size", "desc"),
-        "name": SortField("display_name", "asc"),
-        "status": SortField("status_order", "asc"),
-    }
-
-    DEFAULT_SORT = "size"
 
     FILTERSET_CLASS = BlobFilters
 
     PAGE_TEMPLATE = "media_janitor/reclaim.html"
     FRAGMENT_TEMPLATE = "media_janitor/fragments/reclaim_table.html"
 
-    def _status_order_case(self) -> Case:
+    @staticmethod
+    def _status_order_case() -> Case:
         """
         Build a Case expression ranking blobs by the display status vocabulary order
 
@@ -283,13 +165,18 @@ class ReclaimListView(SortedListView):
 
     def base_queryset(self, scan: Scan) -> QuerySet:
         """
-        The scan's unfiltered blobs
+        The scan's unfiltered blobs, with links prefetched for rendering
+
+        The prefetch is lazy, so it costs nothing on the count() path (count() never
+        populates the result cache that triggers prefetching).
 
         :param scan: the scan whose blobs to list
         """
-        return scan.blobs.all()
+        return scan.blobs.prefetch_related(
+            Prefetch("links", queryset=Link.objects.order_by("path"))
+        )
 
-    def get_queryset(self, scan: Scan, sort: str, filterset: FilterSet) -> QuerySet:
+    def get_queryset(self, scan: Scan, filterset: FilterSet) -> QuerySet:
         """
         Build the filtered blob queryset for a scan
 
@@ -297,21 +184,16 @@ class ReclaimListView(SortedListView):
         active. The base view applies the ordering.
 
         :param scan: the scan whose blobs to list
-        :param sort: a validated key from SORTS
-        :param filterset: the parsed filters
+        :param filterset: the parsed filters and sort
         """
-        blobs = filterset.apply(
-            self.base_queryset(scan).prefetch_related(
-                Prefetch("links", queryset=Link.objects.order_by("path"))
-            )
-        )
+        blobs = super().get_queryset(scan, filterset)
 
-        if sort == "name":
+        if filterset.active_sort == "name":
             display_name = Subquery(
                 Link.objects.filter(blob=OuterRef("pk")).order_by("path").values("name")[:1]
             )
             blobs = blobs.annotate(display_name=display_name)
-        elif sort == "status":
+        elif filterset.active_sort == "status":
             blobs = blobs.annotate(status_order=self._status_order_case())
 
         return blobs
@@ -319,14 +201,6 @@ class ReclaimListView(SortedListView):
 
 class TorrentListView(SortedListView):
     """Table of the current scan's torrents"""
-
-    SORTS = {
-        "reclaimable": SortField("bytes_reclaimable_if_removed", "desc"),
-        "name": SortField("name", "asc"),
-        "size": SortField("size", "desc"),
-    }
-
-    DEFAULT_SORT = "reclaimable"
 
     FILTERSET_CLASS = TorrentFilters
 
@@ -341,19 +215,22 @@ class TorrentListView(SortedListView):
         """
         return scan.torrents.all()
 
-    def get_queryset(self, scan: Scan, sort: str, filterset: FilterSet) -> QuerySet:
+    def get_queryset(self, scan: Scan, filterset: FilterSet) -> QuerySet:
         """
         Build the filtered, annotated torrent queryset for a scan
 
-        Annotates each torrent with its blob count. The base view applies the ordering.
+        Annotates each torrent with its blob count.
 
         :param scan: the scan whose torrents to list
-        :param sort: a validated key from SORTS
-        :param filterset: the parsed filters
+        :param filterset: the parsed filters and sort
         """
-        return filterset.apply(self.base_queryset(scan)).annotate(
-            # distinct: a torrent can reference one blob through several file entries
-            blob_count=Count("blobs", distinct=True),
+        return (
+            super()
+            .get_queryset(scan, filterset)
+            .annotate(
+                # distinct: a torrent can reference one blob through several file entries
+                blob_count=Count("blobs", distinct=True),
+            )
         )
 
 

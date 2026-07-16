@@ -8,9 +8,25 @@ from django.db.models import Q, QuerySet
 from django.http import QueryDict
 
 from scanner.models import Kind, TorrentState
-from web.display import FLAG_VOCAB, RECLAIM_STATE_VOCAB, STATUS_VOCAB, status_label
+from web.display import FLAG_VOCAB, RECLAIM_STATE_VOCAB, STATUS_VOCAB, SortColumn, status_label
 
 type ApplyStrategy = Callable[[QuerySet, set[str]], QuerySet]
+
+
+@dataclass(frozen=True)
+class SortField:
+    """
+    A sortable field definition
+
+    Different from SortColumn, which is the per-request header state passed to the templates
+    and depends on the active sort.
+
+    :param field: queryset field or annotation to order by
+    :param default_dir: direction ("asc" or "desc") applied when the column is first sorted
+    """
+
+    field: str
+    default_dir: Literal["asc", "desc"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,14 +131,21 @@ def boolean_field(field: str, true_value: str) -> ApplyStrategy:
 
 class FilterSet(ABC):
     """
-    Parses, applies, and renders the option filters and text search for one list view
+    Parses, applies, and renders the filters, text search, and sort for one list view
 
     Subclasses must:
         - Declare `groups`: The filter definitions
+        - Declare `sorts`: The sortable query params, mapped to a SortField definition
+        - Declare `default_sort`: The sort key applied when none is requested
         - Implement `search`: Applies a search string
     """
 
     groups: ClassVar[tuple[FilterGroup, ...]]
+    # Sortable query params, mapped to the queryset field (or annotation) and default
+    # direction they order by
+    sorts: ClassVar[dict[str, SortField]]
+    # Default sort key, applied when no valid sort is requested
+    default_sort: ClassVar[str]
 
     def __init__(self, params: QueryDict) -> None:
         """
@@ -138,6 +161,8 @@ class FilterSet(ABC):
                 value for value in params.getlist(group.param) if value in valid_values
             }
         self.q = (params.get("q") or "").strip()
+        # Current sort/dir, None when nothing valid is requested or unsorted.
+        self.sort, self.direction = self._resolve_sort()
 
     @abstractmethod
     def search(self, qs: QuerySet, q: str) -> QuerySet:
@@ -164,6 +189,86 @@ class FilterSet(ABC):
         if self.q:
             qs = self.search(qs, self.q)
         return qs
+
+    def _resolve_sort(self) -> tuple[str | None, str | None]:
+        """
+        Resolve the active (sort, dir) pair from the query params
+
+        Returns (None, None) when no valid sort is requested. A valid sort key with a
+        missing or malformed direction falls back to that column's default direction.
+        """
+        sort = self._params.get("sort")
+        if not sort or sort not in self.sorts:
+            return None, None
+
+        direction = self._params.get("dir")
+        if direction not in ("asc", "desc"):
+            direction = self.sorts[sort].default_dir
+
+        return sort, direction
+
+    @property
+    def default_dir(self) -> str:
+        """Direction used for the default (unsorted) ordering"""
+        return self.sorts[self.default_sort].default_dir
+
+    @property
+    def active_sort(self) -> str:
+        """The sort key to order by, falling back to the default when none is requested"""
+        return self.sort or self.default_sort
+
+    @property
+    def active_dir(self) -> str:
+        """The direction to order by, falling back to the default when none is requested"""
+        return self.direction or self.default_dir
+
+    def order(self, qs: QuerySet) -> QuerySet:
+        """
+        Order a queryset by the active sort column, tie-breaking on pk so pagination is stable
+
+        The queryset must already carry any annotation the active sort's SortField references.
+
+        :param qs: the queryset to order
+        """
+        field = self.sorts[self.active_sort].field
+        prefix = "-" if self.active_dir == "desc" else ""
+        return qs.order_by(f"{prefix}{field}", "pk")
+
+    def sort_columns(self) -> dict[str, SortColumn]:
+        """
+        Build the three-state header state for each sortable column
+
+        Clicking a column cycles none -> default direction -> other direction -> none. Each
+        column records its current direction (dir, empty when the column is not the active
+        sort, which also drives whether the indicator shows), and the (next_sort, next_dir)
+        its header link should request next. The clearing step emits None for both so the
+        querystring tag drops the params, returning to the default ordering.
+        """
+        columns: dict[str, SortColumn] = {}
+        for key, spec in self.sorts.items():
+            default_dir = spec.default_dir
+            other_dir = "asc" if default_dir == "desc" else "desc"
+            active = key == self.sort
+
+            next_sort: str | None
+            next_dir: str | None
+            if not active:
+                # Not sorted, so sort by the default direction
+                next_sort, next_dir = key, default_dir
+            elif self.direction == default_dir:
+                # Sorted by the default direction, so sort the other way
+                next_sort, next_dir = key, other_dir
+            else:
+                # Sorted by the second direction, so clear the sort. None drops the
+                # sort/dir params from the header link, returning to the default ordering.
+                next_sort, next_dir = None, None
+
+            columns[key] = {
+                "dir": (self.direction or "") if active else "",
+                "next_sort": next_sort,
+                "next_dir": next_dir,
+            }
+        return columns
 
     @property
     def any_active(self) -> bool:
@@ -228,6 +333,15 @@ class FilterSet(ABC):
 class BlobFilters(FilterSet):
     """Filters for the reclaim list's blobs"""
 
+    # The name and status columns order by annotations the reclaim view attaches only when
+    # that sort is active (display_name, status_order)
+    sorts = {
+        "size": SortField("size", "desc"),
+        "name": SortField("display_name", "asc"),
+        "status": SortField("status_order", "asc"),
+    }
+    default_sort = "size"
+
     groups = (
         FilterGroup(
             param="status",
@@ -289,6 +403,13 @@ class BlobFilters(FilterSet):
 
 class TorrentFilters(FilterSet):
     """Filters for the torrents list"""
+
+    sorts = {
+        "reclaimable": SortField("bytes_reclaimable_if_removed", "desc"),
+        "name": SortField("name", "asc"),
+        "size": SortField("size", "desc"),
+    }
+    default_sort = "reclaimable"
 
     groups = (
         FilterGroup(

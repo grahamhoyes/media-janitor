@@ -1,0 +1,28 @@
+{% comment %}
+  Header indicator for and button to run a scan.
+
+  Idle: a button that POSTs to run_scan and swaps itself for the running state.
+  Running: a spinning icon that polls scan_indicator every few seconds. Once the scan
+  finishes, scan_indicator responds with HX-Refresh, reloading the page onto the new
+  snapshot. This also runs on plain page loads: if a scan is already in progress the
+  base template renders the running state, so the page picks up the result when done.
+{% endcomment %}
+{% if scan_in_progress %}
+  <span class="btn btn-ghost btn-sm btn-square"
+        hx-get="{% url 'scan_indicator' %}"
+        hx-trigger="every 3s"
+        hx-swap="outerHTML"
+        aria-label="Scan in progress"
+        title="Scan in progress">
+    <span class="size-4 animate-spin motion-reduce:animate-none">{% include "theme/icons/arrow-path.svg" %}</span>
+  </span>
+{% else %}
+  <button type="button"
+          class="btn btn-ghost btn-sm btn-square"
+          hx-post="{% url 'run_scan' %}"
+          hx-swap="outerHTML"
+          aria-label="Run scan"
+          title="Run scan">
+    <span class="size-4">{% include "theme/icons/arrow-path.svg" %}</span>
+  </button>
+{% endif %}

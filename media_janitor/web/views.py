@@ -18,10 +18,13 @@ from django.db.models import (
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from django.views.generic import View
 from django_htmx.middleware import HtmxDetails
 
 from scanner.models import Config, Link, Scan
+from scanner.tasks import is_scan_in_progress
+from scanner.tasks import scan as scan_task
 from web import display
 from web.filters import BlobFilters, FilterSet, TorrentFilters
 
@@ -315,6 +318,43 @@ def blob_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "config": Config.get(),
         },
     )
+
+
+@login_required
+@require_POST
+def run_scan(request: HttpRequest) -> HttpResponse:
+    """
+    Enqueue a full-share scan and return the header control in its running state
+    """
+    if not is_scan_in_progress():
+        scan_task.enqueue()
+
+    return render(
+        request,
+        "media_janitor/fragments/scan_indicator.html",
+        {"scan_in_progress": True},
+    )
+
+
+@login_required
+def scan_indicator(request: HttpRequest) -> HttpResponse:
+    """
+    Poll endpoint for the header scan button and indicator
+
+    While a scan is in progress this returns a spinning indicator, which keeps
+    polling. Once no scan is in progress it responds with HX-Refresh so the page
+    reloads onto the freshly published snapshot.
+    """
+    if is_scan_in_progress():
+        return render(
+            request,
+            "media_janitor/fragments/scan_indicator.html",
+            {"scan_in_progress": True},
+        )
+
+    response = HttpResponse(status=204)
+    response["HX-Refresh"] = "true"
+    return response
 
 
 @login_required

@@ -10,5 +10,7 @@ urlpatterns = [
     path("torrents/", views.TorrentListView.as_view(), name="torrents"),
     path("torrents/<int:pk>/blobs/", views.torrent_blobs, name="torrent_blobs"),
     path("blob/<int:pk>/", views.blob_detail, name="blob_detail"),
+    path("scan/", views.run_scan, name="run_scan"),
+    path("scan/indicator/", views.scan_indicator, name="scan_indicator"),
     path("_ping/", views.ping, name="ping"),
 ]

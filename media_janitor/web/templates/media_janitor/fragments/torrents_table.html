@@ -28,11 +28,12 @@
         <th class="w-8"></th>
         {% sort_header sort_columns.name "Name" hx_target="#torrents-table" %}
         <th class="w-26">Seeding</th>
-        <th class="w-14">Blobs</th>
+        {% sort_header sort_columns.added_on "Added On" hx_target="#torrents-table" th_class="w-28" %}
         {% sort_header sort_columns.size "Size" hx_target="#torrents-table" th_class="w-22" %}
         {% sort_header sort_columns.uploaded "Uploaded" hx_target="#torrents-table" th_class="w-22" %}
         {% sort_header sort_columns.ratio "Ratio" hx_target="#torrents-table" th_class="w-16" %}
         {% sort_header sort_columns.reclaimable "Reclaimable Size" hx_target="#torrents-table" th_class="w-33" %}
+        <th class="w-14">Blobs</th>
         <th class="w-40"
             title="Whether the torrent can be removed to reclaim space">Reclaimable?</th>
         {# Action column #}
@@ -67,8 +68,9 @@
           {# Seeding state #}
           <td>{% seeding_badge torrent %}</td>
 
-          {# Blob count #}
-          <td class="font-mono">{{ torrent.blob_count }}</td>
+          {# Added On #}
+          <td class="font-mono whitespace-nowrap"
+              title="{{ torrent.added_on|date:"DATETIME_FORMAT" }}">{{ torrent.added_on|date:"DATE_FORMAT" }}</td>
 
           {# Size #}
           <td class="text-right font-mono whitespace-nowrap">{{ torrent.size|binsize }}</td>
@@ -81,6 +83,9 @@
 
           {# Reclaimable space if removed #}
           <td class="text-right font-mono whitespace-nowrap">{{ torrent.bytes_reclaimable_if_removed|binsize }}</td>
+
+          {# Blob count #}
+          <td class="font-mono">{{ torrent.blob_count }}</td>
 
           {# Reclaimable #}
           <td>

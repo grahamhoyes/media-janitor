@@ -73,8 +73,12 @@
         {% endif %}
 
         <div class="navbar-end gap-2">
-          {% if request.user.is_authenticated and current_scan %}
-            <span class="hidden lg:inline font-mono text-xs text-base-content/40">Last scan {{ current_scan.as_of|date:"Y-m-d H:i" }}</span>
+          {% if request.user.is_authenticated %}
+            {% if current_scan %}
+              <span class="hidden lg:inline font-mono text-xs text-base-content/40">Last scan {{ current_scan.as_of|date:"Y-m-d H:i" }}</span>
+            {% endif %}
+
+            {% include "media_janitor/fragments/scan_indicator.html" %}
           {% endif %}
 
           {# TODO: Selection-bin button goes here #}

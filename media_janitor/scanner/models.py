@@ -69,6 +69,8 @@ class Scan(models.Model):
 
     as_of = models.DateTimeField(help_text="When the scan began")
 
+    finished_at = models.DateTimeField(null=True, blank=True, help_text="When the scan completed")
+
     seeding_min_days = models.PositiveIntegerField(
         help_text="Minimum seeding days, copied from Config at scan start"
     )

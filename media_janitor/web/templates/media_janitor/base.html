@@ -48,6 +48,18 @@
     </script>
     <script defer src="{% static 'vendor/alpine-3.15.12.min.js' %}"></script>
     <script src="{% static 'vendor/htmx-2.0.10.min.js' %}"></script>
+
+    {% if scan_just_completed %}
+      {# Revert the header's success flash back to normal after 5s #}
+      <script>
+        setTimeout(() => {
+          document.getElementById("last-scan-text")?.classList.replace("text-success", "text-base-content/40");
+          document.getElementById("scan-icon-idle")?.classList.remove("hidden");
+          document.getElementById("scan-icon-success")?.classList.add("hidden");
+        }, 5000);
+      </script>
+    {% endif %}
+
   </head>
 
   {% block body %}
@@ -75,7 +87,8 @@
         <div class="navbar-end gap-2">
           {% if request.user.is_authenticated %}
             {% if current_scan %}
-              <span class="hidden lg:inline font-mono text-xs text-base-content/40">Last scan {{ current_scan.as_of|date:"Y-m-d H:i" }}</span>
+              <span id="last-scan-text"
+                    class="hidden lg:inline font-mono text-xs {% if scan_just_completed %}text-success{% else %}text-base-content/40{% endif %}">Last scan {{ current_scan.as_of|date:"Y-m-d H:i" }}</span>
             {% endif %}
 
             {% include "media_janitor/fragments/scan_indicator.html" %}

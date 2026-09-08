@@ -209,8 +209,9 @@ def test_no_n_plus_one(logged_in_client, django_assert_num_queries):
     # rather than a get_or_create that also runs a savepoint + insert on first use.
     Config.get()
 
-    # 1 session, 2 auth user, 3 context processor Scan.current(), 4 view Scan.current(),
-    # 5 the blob, 6 links prefetch, 7 torrents prefetch, 8 Config.get(). Independent of the
+    # 1 session, 2 auth user, 3 context processor Scan.current(), 4-5 context processor
+    # scan_in_progress() (DBTaskResult check, then Scan running check), 6 view Scan.current(),
+    # 7 the blob, 8 links prefetch, 9 torrents prefetch, 10 Config.get(). Independent of the
     # link/torrent counts, which is the no-N+1 property under test.
-    with django_assert_num_queries(8):
+    with django_assert_num_queries(10):
         logged_in_client.get(reverse("blob_detail", args=[blob.pk]))

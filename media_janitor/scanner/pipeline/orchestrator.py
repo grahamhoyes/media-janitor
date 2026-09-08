@@ -261,7 +261,8 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
         scan.status_totals = result.status_totals
         scan.qbittorrent_version = snapshot.server_version
         scan.status = Scan.Status.COMPLETE
-        scan.save(update_fields=["status_totals", "qbittorrent_version", "status"])
+        scan.finished_at = timezone.now()
+        scan.save(update_fields=["status_totals", "qbittorrent_version", "status", "finished_at"])
 
 
 def _mark_failed(scan: Scan) -> None:

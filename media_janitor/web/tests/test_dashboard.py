@@ -150,7 +150,9 @@ def test_dashboard_no_scan_renders_empty_state(logged_in_client):
 @pytest.mark.django_db
 def test_dashboard_query_count(logged_in_client, django_assert_num_queries):
     make_complete_scan()
-    # Session/auth lookups, the context processor's Scan.current(), the view's
-    # Scan.current(), and the torrent count. Locked in to catch N+1 regressions.
-    with django_assert_num_queries(5):
+    # Session/auth lookups, the context processor's Scan.current(), the context
+    # processor's scan_in_progress() (two queries: DBTaskResult check, then Scan
+    # running check), the view's Scan.current(), and the torrent count. Locked in
+    # to catch N+1 regressions.
+    with django_assert_num_queries(7):
         logged_in_client.get(reverse("dashboard"))

@@ -108,11 +108,12 @@ def test_query_count(logged_in_client, django_assert_num_queries):
     # 1: session lookup
     # 2: auth user lookup
     # 3: context processor Scan.current()
-    # 4: view Scan.current()
-    # 5: paginator count
-    # 6: page of blobs
-    # 7: links prefetch for the page
-    with django_assert_num_queries(7):
+    # 4-5: context processor scan_in_progress() (DBTaskResult check, then Scan running check)
+    # 6: view Scan.current()
+    # 7: paginator count
+    # 8: page of blobs
+    # 9: links prefetch for the page
+    with django_assert_num_queries(9):
         logged_in_client.get(reverse("reclaim"))
 
 
@@ -272,7 +273,7 @@ def test_query_count_name_sort(logged_in_client, django_assert_num_queries):
     # The name sort adds a correlated Subquery annotation for the display-link name, but it
     # is inlined into the page SELECT, so the query count matches the default (see
     # test_query_count for the per-query breakdown).
-    with django_assert_num_queries(7):
+    with django_assert_num_queries(9):
         logged_in_client.get(reverse("reclaim"), {"sort": "name", "dir": "asc"})
 
 
@@ -522,7 +523,7 @@ def test_filter_option_preserves_sort_and_resets_page(logged_in_client):
 def test_filter_query_count(logged_in_client, django_assert_num_queries):
     make_complete_scan()
     # One extra query over the unfiltered case (test_query_count): the scan-wide total
-    with django_assert_num_queries(8):
+    with django_assert_num_queries(10):
         logged_in_client.get(reverse("reclaim"), {"status": "reclaimable"})
 
 

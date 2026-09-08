@@ -287,10 +287,11 @@ def test_query_count(logged_in_client, django_assert_num_queries):
     # 1: session lookup
     # 2: auth user lookup
     # 3: context processor Scan.current()
-    # 4: view Scan.current()
-    # 5: paginator count
-    # 6: page of torrents (blob_count inlined as an annotation)
-    with django_assert_num_queries(6):
+    # 4-5: context processor scan_in_progress() (DBTaskResult check, then Scan running check)
+    # 6: view Scan.current()
+    # 7: paginator count
+    # 8: page of torrents (blob_count inlined as an annotation)
+    with django_assert_num_queries(8):
         logged_in_client.get(reverse("torrents"))
 
 
@@ -298,7 +299,7 @@ def test_query_count(logged_in_client, django_assert_num_queries):
 def test_search_query_count(logged_in_client, django_assert_num_queries):
     make_torrents_scan()
     # One extra query over the unsearched case: the scan-wide torrent total
-    with django_assert_num_queries(7):
+    with django_assert_num_queries(9):
         logged_in_client.get(reverse("torrents"), {"q": "char"})
 
 
@@ -494,11 +495,12 @@ def test_blobs_fragment_query_count(logged_in_client, django_assert_num_queries)
     # 1: session lookup
     # 2: auth user lookup
     # 3: context processor Scan.current()
-    # 4: view Scan.current()
-    # 5: torrent lookup
-    # 6: page of blobs
-    # 7: links prefetch
-    with django_assert_num_queries(7):
+    # 4-5: context processor scan_in_progress() (DBTaskResult check, then Scan running check)
+    # 6: view Scan.current()
+    # 7: torrent lookup
+    # 8: page of blobs
+    # 9: links prefetch
+    with django_assert_num_queries(9):
         logged_in_client.get(reverse("torrent_blobs", args=[charlie.pk]))
 
 

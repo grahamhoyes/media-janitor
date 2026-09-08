@@ -145,13 +145,16 @@ class SortedListView(LoginRequiredMixin, View, ABC):
         return value if value > 0 else self.DEFAULT_PAGE_SIZE
 
 
-class ReclaimListView(SortedListView):
-    """Dense table of the current scan's blobs"""
+class FilesListView(SortedListView):
+    """
+    Dense table of the current scan's blobs (which should be called Files
+    in the UI for simplicity).
+    """
 
     FILTERSET_CLASS = BlobFilters
 
-    PAGE_TEMPLATE = "media_janitor/reclaim.html"
-    FRAGMENT_TEMPLATE = "media_janitor/fragments/reclaim_table.html"
+    PAGE_TEMPLATE = "media_janitor/files.html"
+    FRAGMENT_TEMPLATE = "media_janitor/fragments/files_table.html"
 
     @staticmethod
     def _status_order_case() -> Case:
@@ -293,7 +296,7 @@ def blob_detail(request: HttpRequest, pk: int) -> HttpResponse:
     """
     Render the blob detail drawer fragment for one blob of the current scan
 
-    Scoped to the current scan so a stale or unknown pk 404s the same way the reclaim list
+    Scoped to the current scan so a stale or unknown pk 404s the same way the files list
     only ever shows the current scan.
 
     :param request: the incoming request

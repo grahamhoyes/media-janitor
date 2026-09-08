@@ -1,6 +1,6 @@
 {% extends "media_janitor/base.html" %}
 
-{% block page_title %}Reclaim{% endblock page_title %}
+{% block page_title %}Files{% endblock page_title %}
 
 {% block main_class %}w-full{% endblock main_class %}
 
@@ -9,11 +9,11 @@
     {% include "media_janitor/fragments/no_scan.html" %}
   {% else %}
     <div class="flex flex-col gap-3">
-      <h1 class="text-sm font-semibold tracking-tight">Reclaim list</h1>
+      <h1 class="text-sm font-semibold tracking-tight">Files list</h1>
       {# Sort, pagination, and filter controls hx-swap the table fragment into this container. #}
-      <div id="reclaim-table"
+      <div id="files-table"
            class="card bg-base-100 border border-base-300 shadow-sm">
-        {% include "media_janitor/fragments/reclaim_table.html" %}
+        {% include "media_janitor/fragments/files_table.html" %}
       </div>
     </div>
   {% endif %}

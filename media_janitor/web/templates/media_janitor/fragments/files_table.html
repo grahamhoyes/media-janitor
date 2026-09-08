@@ -1,7 +1,7 @@
 {% load janitor %}
 {% comment %}
-  Reclaim list table with pagination. Rendered standalone on an HTMX request and embedded
-  in reclaim.html on a full page load, so it must carry no page chrome.
+  Files list table with pagination. Rendered standalone on an HTMX request and embedded
+  in files.html on a full page load, so it must carry no page chrome.
 
   Context:
     - page_obj: the paginator Page instance
@@ -14,11 +14,11 @@
 {% endcomment %}
 
 {# Filter bar. Lives inside the fragment so its active/count state re-renders on every swap. #}
-{% include "media_janitor/fragments/filter_bar.html" with hx_target="#reclaim-table" search_id="reclaim-search" search_placeholder="Search name or path" %}
+{% include "media_janitor/fragments/filter_bar.html" with hx_target="#files-table" search_id="files-search" search_placeholder="Search name or path" %}
 
 <div class="overflow-x-auto">
   <table class="table table-xs w-full table-fixed min-w-175">
-    {% include "media_janitor/fragments/blob_thead.html" with sort_columns=sort_columns hx_target="#reclaim-table" %}
+    {% include "media_janitor/fragments/blob_thead.html" with sort_columns=sort_columns hx_target="#files-table" %}
     <tbody>
       {% for blob in page_obj %}
         {% include "media_janitor/fragments/blob_row.html" %}
@@ -26,9 +26,9 @@
         <tr>
           <td colspan="7" class="text-center text-base-content/60 py-6 text-xs">
             {% if any_filter %}
-              No blobs match the current filters
+              No files match the current filters
             {% else %}
-              This scan has no blobs
+              This scan has no files
             {% endif %}
           </td>
         </tr>
@@ -39,6 +39,6 @@
 
 {% if page_obj.paginator.count %}
   <div class="flex items-baseline justify-between gap-4 px-4 py-2 border-t border-base-300">
-    {% pagination_controls page_obj hx_target="#reclaim-table" %}
+    {% pagination_controls page_obj hx_target="#files-table" %}
   </div>
 {% endif %}

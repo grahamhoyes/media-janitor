@@ -7,7 +7,7 @@
   <thead>
     <tr>
       <th>Status</th>
-      <th class="text-right">Blobs</th>
+      <th class="text-right">Files</th>
       <th class="text-right">Size</th>
     </tr>
   </thead>
@@ -15,7 +15,7 @@
     {% for row in breakdown %}
       <tr>
         <td>
-          <a href="{% url 'reclaim' %}?status={{ row.key }}">
+          <a href="{% url 'files' %}?status={{ row.key }}">
             {% include "media_janitor/fragments/status_badge.html" with badge=row.badge label=row.label %}
           </a>
         </td>

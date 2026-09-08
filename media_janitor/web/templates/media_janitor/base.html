@@ -78,7 +78,7 @@
           <nav class="navbar-center hidden md:flex">
             <ul class="menu menu-horizontal menu-sm px-1 gap-0.5">
               <li><a href="{% url 'dashboard' %}">Dashboard</a></li>
-              <li><a href="{% url 'reclaim' %}">Reclaim</a></li>
+              <li><a href="{% url 'files' %}">Files</a></li>
               <li><a href="{% url 'torrents' %}">Torrents</a></li>
             </ul>
           </nav>
@@ -88,7 +88,7 @@
           {% if request.user.is_authenticated %}
             {% if current_scan %}
               <span id="last-scan-text"
-                    class="hidden lg:inline font-mono text-xs {% if scan_just_completed %}text-success{% else %}text-base-content/40{% endif %}">Last scan {{ current_scan.as_of|date:"Y-m-d H:i" }}</span>
+                    class="hidden lg:inline font-mono text-xs {% if scan_just_completed %}text-success{% else %}text-base-content/40{% endif %}">Last scan {{ current_scan.as_of|date:"DATETIME_FORMAT" }}</span>
             {% endif %}
 
             {% include "media_janitor/fragments/scan_indicator.html" %}

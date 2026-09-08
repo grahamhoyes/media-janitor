@@ -18,7 +18,7 @@ def logged_in_client(client, django_user_model):
 @pytest.mark.django_db
 def test_lists_blobs_sorted_by_size_desc(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"))
+    response = logged_in_client.get(reverse("files"))
     assert response.status_code == 200
 
     sizes = [blob.size for blob in response.context["page_obj"]]
@@ -28,7 +28,7 @@ def test_lists_blobs_sorted_by_size_desc(logged_in_client):
 @pytest.mark.django_db
 def test_htmx_returns_only_fragment(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), HTTP_HX_REQUEST="true")
+    response = logged_in_client.get(reverse("files"), HTTP_HX_REQUEST="true")
     content = response.content.decode()
 
     # Fragment has the table but none of the page chrome (navbar brand).
@@ -39,7 +39,7 @@ def test_htmx_returns_only_fragment(logged_in_client):
 @pytest.mark.django_db
 def test_normal_request_returns_full_page(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"))
+    response = logged_in_client.get(reverse("files"))
     content = response.content.decode()
 
     # Full page carries the navbar brand.
@@ -57,12 +57,12 @@ def _showing(start, end, total):
 def test_pagination_splits_rows(logged_in_client):
     make_complete_scan()
 
-    page1 = logged_in_client.get(reverse("reclaim"), {"page": 1, "page_size": 2})
+    page1 = logged_in_client.get(reverse("files"), {"page": 1, "page_size": 2})
     sizes1 = [blob.size for blob in page1.context["page_obj"]]
     assert sizes1 == [6000, 4000]
     assert _showing(1, 2, 5) in page1.content.decode()
 
-    page2 = logged_in_client.get(reverse("reclaim"), {"page": 2, "page_size": 2})
+    page2 = logged_in_client.get(reverse("files"), {"page": 2, "page_size": 2})
     sizes2 = [blob.size for blob in page2.context["page_obj"]]
     assert sizes2 == [3000, 2000]
 
@@ -87,7 +87,7 @@ def test_invalid_params_do_not_500(logged_in_client):
     Blob.objects.bulk_create(blobs)
 
     # Out-of-range page clamps to a valid page; bad page_size falls back to default
-    response = logged_in_client.get(reverse("reclaim"), {"page": "999", "page_size": "-3"})
+    response = logged_in_client.get(reverse("files"), {"page": "999", "page_size": "-3"})
     assert response.status_code == 200
 
     content = response.content.decode()
@@ -95,7 +95,7 @@ def test_invalid_params_do_not_500(logged_in_client):
     assert _showing(151, 155, 155) in content
     assert len(response.context["page_obj"].object_list) == 5
 
-    response = logged_in_client.get(reverse("reclaim"), {"page": "abc", "page_size": "xyz"})
+    response = logged_in_client.get(reverse("files"), {"page": "abc", "page_size": "xyz"})
     content = response.content.decode()
     assert response.status_code == 200
     assert _showing(1, 50, 155) in content
@@ -114,7 +114,7 @@ def test_query_count(logged_in_client, django_assert_num_queries):
     # 8: page of blobs
     # 9: links prefetch for the page
     with django_assert_num_queries(9):
-        logged_in_client.get(reverse("reclaim"))
+        logged_in_client.get(reverse("files"))
 
 
 @pytest.mark.django_db
@@ -122,10 +122,10 @@ def test_sort_by_status_uses_vocabulary_order(logged_in_client):
     make_complete_scan()
     # Vocabulary order: reclaimable, linked_externally, seeding_hold, in_library, in_progress
     # which maps to sizes 6000, 3000, 4000, 2000, 1000.
-    asc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "asc"})
+    asc = logged_in_client.get(reverse("files"), {"sort": "status", "dir": "asc"})
     assert [b.size for b in asc.context["page_obj"]] == [6000, 2000, 1000, 4000, 3000]
 
-    desc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "desc"})
+    desc = logged_in_client.get(reverse("files"), {"sort": "status", "dir": "desc"})
     assert [b.size for b in desc.context["page_obj"]] == [3000, 4000, 1000, 2000, 6000]
 
 
@@ -134,10 +134,10 @@ def test_sort_by_name_uses_display_link(logged_in_client):
     make_complete_scan()
     # Display names sort as: example.mkv (6000), example.nfo (2000), external.mkv (3000),
     # incoming.part (1000), show.mkv (4000).
-    asc = logged_in_client.get(reverse("reclaim"), {"sort": "name", "dir": "asc"})
+    asc = logged_in_client.get(reverse("files"), {"sort": "name", "dir": "asc"})
     assert [b.size for b in asc.context["page_obj"]] == [6000, 2000, 3000, 1000, 4000]
 
-    desc = logged_in_client.get(reverse("reclaim"), {"sort": "name", "dir": "desc"})
+    desc = logged_in_client.get(reverse("files"), {"sort": "name", "dir": "desc"})
     assert [b.size for b in desc.context["page_obj"]] == [4000, 1000, 3000, 2000, 6000]
 
 
@@ -152,7 +152,7 @@ def test_name_sort_picks_lowest_path_link(logged_in_client):
     second = make_blob(scan, st_ino=2, size=2000)
     make_link(second, "media/b/bbb.mkv")
 
-    response = logged_in_client.get(reverse("reclaim"), {"sort": "name", "dir": "asc"})
+    response = logged_in_client.get(reverse("files"), {"sort": "name", "dir": "asc"})
     assert [b.size for b in response.context["page_obj"]] == [1000, 2000]
 
 
@@ -161,7 +161,7 @@ def test_sort_tie_break_on_pk(logged_in_client):
     scan = make_scan()
     blobs = [make_blob(scan, st_ino=i, size=1000) for i in range(1, 4)]
 
-    response = logged_in_client.get(reverse("reclaim"), {"sort": "size", "dir": "desc"})
+    response = logged_in_client.get(reverse("files"), {"sort": "size", "dir": "desc"})
     pks = [blob.pk for blob in response.context["page_obj"]]
     # Equal sizes fall back to the stable pk tie-break (creation order)
     assert pks == [blob.pk for blob in blobs]
@@ -170,7 +170,7 @@ def test_sort_tie_break_on_pk(logged_in_client):
 @pytest.mark.django_db
 def test_invalid_sort_params_fall_back_to_default(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), {"sort": "bogus", "dir": "sideways"})
+    response = logged_in_client.get(reverse("files"), {"sort": "bogus", "dir": "sideways"})
     assert response.status_code == 200
     # Invalid sort drops to the unsorted state (None), which still orders size desc
     assert response.context["sort"] is None
@@ -184,7 +184,7 @@ def test_sort_persists_across_pagination(logged_in_client):
     make_complete_scan()
     # Size ascending: [1000, 2000, 3000, 4000, 6000]; page 2 with size 2 is [3000, 4000]
     page2 = logged_in_client.get(
-        reverse("reclaim"),
+        reverse("files"),
         {"sort": "size", "dir": "asc", "page_size": 2, "page": 2},
     )
     assert [b.size for b in page2.context["page_obj"]] == [3000, 4000]
@@ -196,7 +196,7 @@ def test_sort_links_reset_page_and_preserve_params(logged_in_client):
     # On page 2 with a custom page size, the sort header links must keep page_size, set the
     # new sort, and drop the page param (resetting to page 1). Ampersands are HTML-escaped.
     response = logged_in_client.get(
-        reverse("reclaim"),
+        reverse("files"),
         {"page_size": 2, "page": 2},
     )
     content = response.content.decode()
@@ -208,7 +208,7 @@ def test_sort_links_reset_page_and_preserve_params(logged_in_client):
 @pytest.mark.django_db
 def test_active_sort_header_flips_direction(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), {"sort": "size", "dir": "desc"})
+    response = logged_in_client.get(reverse("files"), {"sort": "size", "dir": "desc"})
     content = response.content.decode()
     # The active Size header links to the opposite direction
     assert "sort=size&amp;dir=asc" in content
@@ -219,20 +219,20 @@ def test_size_sort_three_state_cycle(logged_in_client):
     make_complete_scan()
 
     # State 1 (none): no params. Size column inactive, first click sorts at its default (desc)
-    none = logged_in_client.get(reverse("reclaim"))
+    none = logged_in_client.get(reverse("files"))
     col = none.context["sort_columns"]["size"]
     assert col["dir"] == ""
     assert (col["next_sort"], col["next_dir"]) == ("size", "desc")
     assert [b.size for b in none.context["page_obj"]] == [6000, 4000, 3000, 2000, 1000]
 
     # State 2 (default dir): size desc. Next click flips to the other direction (asc)
-    desc = logged_in_client.get(reverse("reclaim"), {"sort": "size", "dir": "desc"})
+    desc = logged_in_client.get(reverse("files"), {"sort": "size", "dir": "desc"})
     col = desc.context["sort_columns"]["size"]
     assert col["dir"] == "desc"
     assert (col["next_sort"], col["next_dir"]) == ("size", "asc")
 
     # State 3 (other dir): size asc. Next click clears the sort (empty sort/dir)
-    asc = logged_in_client.get(reverse("reclaim"), {"sort": "size", "dir": "asc"})
+    asc = logged_in_client.get(reverse("files"), {"sort": "size", "dir": "asc"})
     col = asc.context["sort_columns"]["size"]
     assert col["dir"] == "asc"
     assert (col["next_sort"], col["next_dir"]) == (None, None)
@@ -243,13 +243,13 @@ def test_size_sort_three_state_cycle(logged_in_client):
 def test_text_column_cycle_starts_ascending(logged_in_client):
     make_complete_scan()
     # Name/Status default to ascending: none -> asc -> desc -> none
-    none = logged_in_client.get(reverse("reclaim"))
+    none = logged_in_client.get(reverse("files"))
     assert none.context["sort_columns"]["status"]["next_dir"] == "asc"
 
-    asc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "asc"})
+    asc = logged_in_client.get(reverse("files"), {"sort": "status", "dir": "asc"})
     assert asc.context["sort_columns"]["status"]["next_dir"] == "desc"
 
-    desc = logged_in_client.get(reverse("reclaim"), {"sort": "status", "dir": "desc"})
+    desc = logged_in_client.get(reverse("files"), {"sort": "status", "dir": "desc"})
     col = desc.context["sort_columns"]["status"]
     assert (col["next_sort"], col["next_dir"]) == (None, None)
 
@@ -260,7 +260,7 @@ def test_clear_sort_link_drops_sort_params(logged_in_client):
     # When a column is at its second direction, its header link clears sort and dir so the
     # only thing left is the surviving page_size param.
     response = logged_in_client.get(
-        reverse("reclaim"), {"sort": "size", "dir": "asc", "page_size": 2}
+        reverse("files"), {"sort": "size", "dir": "asc", "page_size": 2}
     )
     content = response.content.decode()
     # The Size header (active asc) clears to just page_size; no sort= or dir= remain on it
@@ -274,7 +274,7 @@ def test_query_count_name_sort(logged_in_client, django_assert_num_queries):
     # is inlined into the page SELECT, so the query count matches the default (see
     # test_query_count for the per-query breakdown).
     with django_assert_num_queries(9):
-        logged_in_client.get(reverse("reclaim"), {"sort": "name", "dir": "asc"})
+        logged_in_client.get(reverse("files"), {"sort": "name", "dir": "asc"})
 
 
 @pytest.mark.django_db
@@ -282,7 +282,7 @@ def test_no_scan_renders_empty_state(logged_in_client):
     make_scan(status=Scan.Status.RUNNING)
     make_scan(status=Scan.Status.FAILED)
 
-    response = logged_in_client.get(reverse("reclaim"))
+    response = logged_in_client.get(reverse("files"))
     assert response.status_code == 200
     assert "No completed scan yet" in response.content.decode()
 
@@ -290,10 +290,10 @@ def test_no_scan_renders_empty_state(logged_in_client):
 @pytest.mark.django_db
 def test_zero_blob_scan_renders_empty_table(logged_in_client):
     make_scan()  # complete scan with no blobs
-    response = logged_in_client.get(reverse("reclaim"))
+    response = logged_in_client.get(reverse("files"))
     assert response.status_code == 200
     content = response.content.decode()
-    assert "This scan has no blobs" in content
+    assert "This scan has no files" in content
     # Not the no-scan empty state.
     assert "No completed scan yet" not in content
 
@@ -307,7 +307,7 @@ def test_extra_link_indicator(logged_in_client):
     single = make_blob(scan, st_ino=2, size=1000)
     make_link(single, "torrents/b/two.mkv")
 
-    response = logged_in_client.get(reverse("reclaim"))
+    response = logged_in_client.get(reverse("files"))
     content = response.content.decode()
     assert "+1 more" in content
 
@@ -322,7 +322,7 @@ def test_seeding_column_met(logged_in_client):
     blob = make_blob(scan, st_ino=1, status=Blob.Status.IN_LIBRARY, seeding_met=True)
     make_link(blob, "media/a/met.mkv")
 
-    content = logged_in_client.get(reverse("reclaim")).content.decode()
+    content = logged_in_client.get(reverse("files")).content.decode()
     assert "Yes" in content
 
 
@@ -339,7 +339,7 @@ def test_seeding_column_pending_shows_date(logged_in_client):
     )
     make_link(blob, "torrents/a/pending.mkv")
 
-    content = logged_in_client.get(reverse("reclaim")).content.decode()
+    content = logged_in_client.get(reverse("files")).content.decode()
     assert formats.date_format(end, "DATE_FORMAT") in content in content
     assert "Yes" not in content
 
@@ -356,7 +356,7 @@ def test_seeding_column_untracked_shows_dash(logged_in_client):
     )
     make_link(blob, "torrents/a/loose.mkv")
 
-    content = logged_in_client.get(reverse("reclaim")).content.decode()
+    content = logged_in_client.get(reverse("files")).content.decode()
     assert "Yes" not in content
 
 
@@ -371,14 +371,14 @@ def _sizes(response):
 @pytest.mark.django_db
 def test_filter_status_single(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), {"status": "reclaimable"})
+    response = logged_in_client.get(reverse("files"), {"status": "reclaimable"})
     assert _sizes(response) == [6000]
 
 
 @pytest.mark.django_db
 def test_filter_status_multiple_is_or(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), {"status": ["reclaimable", "in_library"]})
+    response = logged_in_client.get(reverse("files"), {"status": ["reclaimable", "in_library"]})
     # OR within status, default size desc order
     assert _sizes(response) == [6000, 2000]
 
@@ -386,14 +386,14 @@ def test_filter_status_multiple_is_or(logged_in_client):
 @pytest.mark.django_db
 def test_filter_kind(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), {"kind": "sidecar"})
+    response = logged_in_client.get(reverse("files"), {"kind": "sidecar"})
     assert _sizes(response) == [2000]
 
 
 @pytest.mark.django_db
 def test_filter_kind_multiple_is_or(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), {"kind": ["sidecar", "other"]})
+    response = logged_in_client.get(reverse("files"), {"kind": ["sidecar", "other"]})
     assert _sizes(response) == [2000, 1000]
 
 
@@ -403,14 +403,14 @@ def test_filter_single_flag(logged_in_client):
     # cross_seed sits on the reclaimable blob (6000). All flags share one filter code path,
     # so one representative flag covers it.
     # (AND semantics are in test_filter_multiple_flags_are_anded)
-    assert _sizes(logged_in_client.get(reverse("reclaim"), {"flag": "cross_seed"})) == [6000]
+    assert _sizes(logged_in_client.get(reverse("files"), {"flag": "cross_seed"})) == [6000]
 
 
 @pytest.mark.django_db
 def test_filter_text_search_matches_name(logged_in_client):
     make_complete_scan()
     # Only the reclaimable blob's link is named example.mkv
-    response = logged_in_client.get(reverse("reclaim"), {"q": "example.mkv"})
+    response = logged_in_client.get(reverse("files"), {"q": "example.mkv"})
     assert _sizes(response) == [6000]
 
 
@@ -418,7 +418,7 @@ def test_filter_text_search_matches_name(logged_in_client):
 def test_filter_text_search_matches_path(logged_in_client):
     make_complete_scan()
     # The seeding_hold blob's link path is torrents/tv/show.mkv
-    response = logged_in_client.get(reverse("reclaim"), {"q": "tv/show"})
+    response = logged_in_client.get(reverse("files"), {"q": "tv/show"})
     assert _sizes(response) == [4000]
 
 
@@ -430,7 +430,7 @@ def test_filter_text_search_distinct(logged_in_client):
     make_link(blob, "torrents/a/duplicate.mkv")
     make_link(blob, "media/a/duplicate.mkv")
 
-    response = logged_in_client.get(reverse("reclaim"), {"q": "duplicate"})
+    response = logged_in_client.get(reverse("files"), {"q": "duplicate"})
     assert _sizes(response) == [1000]
 
 
@@ -438,15 +438,11 @@ def test_filter_text_search_distinct(logged_in_client):
 def test_filter_combines_status_and_flag(logged_in_client):
     make_complete_scan()
     # AND across types: reclaimable AND cross_seed both describe the 6000 blob
-    match = logged_in_client.get(
-        reverse("reclaim"), {"status": "reclaimable", "flag": "cross_seed"}
-    )
+    match = logged_in_client.get(reverse("files"), {"status": "reclaimable", "flag": "cross_seed"})
     assert _sizes(match) == [6000]
 
     # the reclaimable blob does not carry multi_link, so the combination is empty
-    empty = logged_in_client.get(
-        reverse("reclaim"), {"status": "reclaimable", "flag": "multi_link"}
-    )
+    empty = logged_in_client.get(reverse("files"), {"status": "reclaimable", "flag": "multi_link"})
     assert _sizes(empty) == []
 
 
@@ -454,11 +450,11 @@ def test_filter_combines_status_and_flag(logged_in_client):
 def test_filter_multiple_flags_are_anded(logged_in_client):
     make_complete_scan()
     # The in_library blob (2000) carries both could_seed and multi_link
-    both = logged_in_client.get(reverse("reclaim"), {"flag": ["could_seed", "multi_link"]})
+    both = logged_in_client.get(reverse("files"), {"flag": ["could_seed", "multi_link"]})
     assert _sizes(both) == [2000]
 
     # No blob carries both could_seed and cross_seed
-    none = logged_in_client.get(reverse("reclaim"), {"flag": ["could_seed", "cross_seed"]})
+    none = logged_in_client.get(reverse("files"), {"flag": ["could_seed", "cross_seed"]})
     assert _sizes(none) == []
 
 
@@ -466,7 +462,7 @@ def test_filter_multiple_flags_are_anded(logged_in_client):
 def test_invalid_filter_values_are_ignored(logged_in_client):
     make_complete_scan()
     response = logged_in_client.get(
-        reverse("reclaim"), {"status": "bogus", "kind": "nope", "flag": "not_a_flag"}
+        reverse("files"), {"status": "bogus", "kind": "nope", "flag": "not_a_flag"}
     )
     assert response.status_code == 200
     # Unknown values drop out, leaving no active filter and the full list
@@ -477,7 +473,7 @@ def test_invalid_filter_values_are_ignored(logged_in_client):
 @pytest.mark.django_db
 def test_result_count_unfiltered_shows_total(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"))
+    response = logged_in_client.get(reverse("files"))
     assert response.context["total_count"] == 5
     assert response.context["any_filter"] is False
     content = response.content.decode()
@@ -490,7 +486,7 @@ def test_result_count_unfiltered_shows_total(logged_in_client):
 @pytest.mark.django_db
 def test_result_count_filtered_shows_matching_and_total(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), {"status": "reclaimable"})
+    response = logged_in_client.get(reverse("files"), {"status": "reclaimable"})
     assert response.context["matching_count"] == 1
     assert response.context["total_count"] == 5
     content = response.content.decode()
@@ -503,7 +499,7 @@ def test_result_count_filtered_shows_matching_and_total(logged_in_client):
 def test_clear_filters_link_drops_filters_keeps_sort_and_page_size(logged_in_client):
     make_complete_scan()
     response = logged_in_client.get(
-        reverse("reclaim") + "?sort=size&dir=asc&page_size=2&status=reclaimable"
+        reverse("files") + "?sort=size&dir=asc&page_size=2&status=reclaimable"
     )
     content = response.content.decode()
     # The clear link strips every filter param but preserves sort, dir, and page_size
@@ -513,7 +509,7 @@ def test_clear_filters_link_drops_filters_keeps_sort_and_page_size(logged_in_cli
 @pytest.mark.django_db
 def test_filter_option_preserves_sort_and_resets_page(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim") + "?page=2&page_size=2&sort=name&dir=asc")
+    response = logged_in_client.get(reverse("files") + "?page=2&page_size=2&sort=name&dir=asc")
     content = response.content.decode()
     # The reclaimable status option link keeps sort/dir/page_size, drops page, and adds status
     assert 'href="?page_size=2&amp;sort=name&amp;dir=asc&amp;status=reclaimable"' in content
@@ -524,7 +520,7 @@ def test_filter_query_count(logged_in_client, django_assert_num_queries):
     make_complete_scan()
     # One extra query over the unfiltered case (test_query_count): the scan-wide total
     with django_assert_num_queries(10):
-        logged_in_client.get(reverse("reclaim"), {"status": "reclaimable"})
+        logged_in_client.get(reverse("files"), {"status": "reclaimable"})
 
 
 @pytest.mark.django_db
@@ -532,11 +528,11 @@ def test_filtered_empty_shows_filter_message(logged_in_client):
     make_complete_scan()
     # A flag no blob carries empties the table; the message must reflect the filter, not an
     # empty scan.
-    response = logged_in_client.get(reverse("reclaim"), {"kind": "sidecar", "flag": "cross_seed"})
+    response = logged_in_client.get(reverse("files"), {"kind": "sidecar", "flag": "cross_seed"})
     assert _sizes(response) == []
     content = response.content.decode()
-    assert "No blobs match the current filters" in content
-    assert "This scan has no blobs" not in content
+    assert "No files match the current filters" in content
+    assert "This scan has no files" not in content
 
 
 # --- Torrent tracked/untracked options ---
@@ -546,7 +542,7 @@ def test_filtered_empty_shows_filter_message(logged_in_client):
 def test_filter_torrent_tracked(logged_in_client):
     make_complete_scan()
     # The reclaimable, linked_externally, and seeding_hold blobs are torrent tracked
-    response = logged_in_client.get(reverse("reclaim"), {"torrent": "tracked"})
+    response = logged_in_client.get(reverse("files"), {"torrent": "tracked"})
     assert _sizes(response) == [6000, 4000, 3000]
 
 
@@ -554,14 +550,14 @@ def test_filter_torrent_tracked(logged_in_client):
 def test_filter_torrent_untracked(logged_in_client):
     make_complete_scan()
     # The in_library and in_progress blobs have no owning torrent
-    response = logged_in_client.get(reverse("reclaim"), {"torrent": "untracked"})
+    response = logged_in_client.get(reverse("files"), {"torrent": "untracked"})
     assert _sizes(response) == [2000, 1000]
 
 
 @pytest.mark.django_db
 def test_filter_torrent_both_selected_does_not_narrow(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), {"torrent": ["tracked", "untracked"]})
+    response = logged_in_client.get(reverse("files"), {"torrent": ["tracked", "untracked"]})
     assert _sizes(response) == [6000, 4000, 3000, 2000, 1000]
     # Both options selected still counts as an active filter (clear control shows)
     assert response.context["any_filter"] is True
@@ -573,20 +569,18 @@ def test_filter_torrent_combines_with_status(logged_in_client):
     # AND across types: reclaimable AND untracked matches nothing (the reclaimable blob is
     # tracked); reclaimable AND tracked matches it.
     empty = logged_in_client.get(
-        reverse("reclaim"), {"status": "reclaimable", "torrent": "untracked"}
+        reverse("files"), {"status": "reclaimable", "torrent": "untracked"}
     )
     assert _sizes(empty) == []
 
-    match = logged_in_client.get(
-        reverse("reclaim"), {"status": "reclaimable", "torrent": "tracked"}
-    )
+    match = logged_in_client.get(reverse("files"), {"status": "reclaimable", "torrent": "tracked"})
     assert _sizes(match) == [6000]
 
 
 @pytest.mark.django_db
 def test_invalid_torrent_filter_values_are_ignored(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim"), {"torrent": "bogus"})
+    response = logged_in_client.get(reverse("files"), {"torrent": "bogus"})
     assert response.context["any_filter"] is False
     assert _sizes(response) == [6000, 4000, 3000, 2000, 1000]
 
@@ -594,7 +588,7 @@ def test_invalid_torrent_filter_values_are_ignored(logged_in_client):
 @pytest.mark.django_db
 def test_torrent_option_preserves_sort_and_resets_page(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim") + "?page=2&page_size=2&sort=name&dir=asc")
+    response = logged_in_client.get(reverse("files") + "?page=2&page_size=2&sort=name&dir=asc")
     content = response.content.decode()
     # The Tracked option link keeps sort/dir/page_size, drops page, and adds torrent=tracked
     assert 'href="?page_size=2&amp;sort=name&amp;dir=asc&amp;torrent=tracked"' in content
@@ -603,7 +597,7 @@ def test_torrent_option_preserves_sort_and_resets_page(logged_in_client):
 @pytest.mark.django_db
 def test_clear_filters_link_drops_torrent_param(logged_in_client):
     make_complete_scan()
-    response = logged_in_client.get(reverse("reclaim") + "?torrent=tracked&sort=size&dir=asc")
+    response = logged_in_client.get(reverse("files") + "?torrent=tracked&sort=size&dir=asc")
     content = response.content.decode()
     # The clear link strips the torrent param but preserves sort and dir
     assert 'href="?sort=size&amp;dir=asc"' in content

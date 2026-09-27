@@ -210,12 +210,11 @@
                 <div class="flex items-center gap-1 shrink-0">
                   {% seeding_badge torrent %}
                   <button type="button"
-                    class="btn btn-ghost btn-xs btn-square"
-                    aria-label="Open torrent detail"
-                    {# TODO: Replace with url route once built #}
-                    hx-get="/torrent/{{ torrent.pk }}/"
-                    hx-target="#drawer"
-                    hx-swap="innerHTML">
+                          class="btn btn-ghost btn-xs btn-square"
+                          aria-label="Open torrent detail"
+                          hx-get="{% url 'torrent_detail' torrent.pk %}"
+                          hx-target="#drawer"
+                          hx-swap="innerHTML">
                     <span class="size-4">{% include "theme/icons/chevron-right.svg" %}</span>
                   </button>
                 </div>

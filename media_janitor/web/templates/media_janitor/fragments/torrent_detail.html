@@ -1,0 +1,228 @@
+{% load janitor %}
+{% comment %}
+  Torrent detail drawer fragment. Swapped into #drawer (see base.html).
+
+  Context:
+    - torrent: the Torrent to detail
+    - blobs: the torrent's blobs, distinct, size desc, with links prefetched
+    - blob_groups: the same blobs grouped by status (display.blobs_by_status()), in
+                    STATUS_VOCAB order, each group's blobs keeping the size desc ordering
+    - config: the singleton Config, used for the seeding_min_ratio tooltip
+{% endcomment %}
+
+<div class="flex flex-col">
+  {# Header: seeding state + close #}
+  <div class="sticky top-0 z-10 bg-base-100 border-b border-base-300 px-4 py-3 flex items-start justify-between gap-3">
+    <div class="flex flex-col gap-1 min-w-0">{% seeding_badge torrent %}</div>
+    {% include "media_janitor/components/close-drawer.html" %}
+  </div>
+
+  <div class="flex flex-col gap-4 px-4 py-4">
+    {# Identity #}
+    <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+      <div class="col-span-2">
+        <dt class="text-base-content/50">Name</dt>
+        <dd class="font-mono break-all">
+          {{ torrent.name }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Category</dt>
+        <dd>
+          {{ torrent.category|default:"-" }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Reclaim State</dt>
+        <dd>
+          {% with badge=torrent.reclaim_state|reclaim_state_badge %}
+            <span class="badge {{ badge.badge }} badge-xs cursor-help"
+                  title="{{ badge.tooltip }}">{{ badge.label }}</span>
+          {% endwith %}
+        </dd>
+      </div>
+
+      {# Hash, with a copy button #}
+      <div class="col-span-2 flex justify-between items-center gap-2 group">
+        <dt class="text-base-content/50 shrink-0">Hash</dt>
+        <dd class="flex items-center space-x-1 min-w-0"
+            title="{{ torrent.hash }}">
+          <p class="font-mono truncate">{{ torrent.hash }}</p>
+          <button type="button"
+                  class="btn btn-ghost btn-xs btn-square group/copy shrink-0 sm:hidden group-hover:inline-flex focus-visible:inline-flex"
+                  x-copy
+                  data-copy="{{ torrent.hash }}"
+                  aria-label="Copy hash">
+            <span class="size-4 group-data-copied/copy:hidden" title="Copy hash">
+              {% include "theme/icons/clipboard-document.svg" %}
+            </span>
+            <span class="size-4 text-success hidden group-data-copied/copy:inline-block">
+              {% include "theme/icons/clipboard-document-check.svg" %}
+            </span>
+          </button>
+        </dd>
+      </div>
+
+      {# Tracker, with a copy button and public/private badge #}
+      <div class="col-span-2 flex justify-between items-center gap-2 group">
+        <dt class="text-base-content/50 shrink-0">Tracker</dt>
+        <dd class="flex items-center space-x-1 min-w-0"
+            title="{{ torrent.tracker }}">
+          <p class="font-mono truncate">{{ torrent.tracker_host }}</p>
+          <button type="button"
+                  class="btn btn-ghost btn-xs btn-square group/copy shrink-0 sm:hidden group-hover:inline-flex focus-visible:inline-flex"
+                  x-copy
+                  data-copy="{{ torrent.tracker }}"
+                  aria-label="Copy tracker">
+            <span class="size-4 group-data-copied/copy:hidden" title="Copy tracker">
+              {% include "theme/icons/clipboard-document.svg" %}
+            </span>
+            <span class="size-4 text-success hidden group-data-copied/copy:inline-block">
+              {% include "theme/icons/clipboard-document-check.svg" %}
+            </span>
+          </button>
+          {% if torrent.private %}
+            <span class="badge badge-xs badge-warning">Private</span>
+          {% else %}
+            <span class="badge badge-xs badge-info">Public</span>
+          {% endif %}
+        </dd>
+      </div>
+
+      {# Paths #}
+      <div class="col-span-2">
+        <dt class="text-base-content/50">Content Path</dt>
+        <dd class="font-mono break-all">
+          {{ torrent.content_path }}
+        </dd>
+      </div>
+      <div class="col-span-2">
+        <dt class="text-base-content/50">Save Path</dt>
+        <dd class="font-mono break-all">
+          {{ torrent.save_path }}
+        </dd>
+      </div>
+    </dl>
+
+    {# Sizes #}
+    <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+      <div>
+        <dt class="text-base-content/50">Size</dt>
+        <dd class="font-mono">
+          {{ torrent.size|binsize }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Uploaded</dt>
+        <dd class="font-mono">
+          {{ torrent.uploaded|binsize }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Ratio</dt>
+        <dd class="font-mono">
+          {{ torrent.ratio|floatformat:2 }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Bytes Reclaimable If Removed</dt>
+        <dd class="font-mono">
+          {{ torrent.bytes_reclaimable_if_removed|binsize }}
+        </dd>
+      </div>
+    </dl>
+
+    {# Timestamps and seeding #}
+    <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+      <div>
+        <dt class="text-base-content/50">Added On</dt>
+        <dd class="font-mono"
+            title="{{ torrent.added_on|date:"DATETIME_FORMAT" }}">
+          {{ torrent.added_on|date:"DATE_FORMAT"|default:"-" }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Last Activity</dt>
+        <dd class="font-mono"
+            title="{{ torrent.last_activity|date:"DATETIME_FORMAT" }}">
+          {{ torrent.last_activity|date:"DATE_FORMAT"|default:"-" }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Seeding</dt>
+        <dd class="font-mono"
+            title="Started on {{ torrent.completed_on|date:"DATETIME_FORMAT" }}">
+          {{ torrent.seeding_time|duration }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">Requirements Met</dt>
+        <dd>
+          {% if torrent.seeding_met %}
+            <span class="badge badge-success badge-xs">Yes</span>
+          {% else %}
+            <span class="badge badge-warning badge-xs">No</span>
+          {% endif %}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-base-content/50">
+          {% if torrent.seeding_met %}
+            <span {% if torrent.ratio >= config.seeding_min_ratio %} class="cursor-help" title="Only accounts for when seeding duration was met. Torrent may have reached ratio {{ config.seeding_min_ratio }} prior to this."{% endif %}>Met on</span>
+          {% else %}
+            Met by
+          {% endif %}
+        </dt>
+        <dd class="font-mono"
+            title="{{ torrent.seeding_end|date:"DATETIME_FORMAT"|default:"-" }}">
+          {{ torrent.seeding_end|date:"DATE_FORMAT"|default:"-" }}
+        </dd>
+      </div>
+    </dl>
+
+    {# The torrent's blobs, grouped by status. Each can open the blob's own drawer. #}
+    <div>
+      <div class="text-xs font-semibold text-base-content/70 mb-2">
+        Files <span class="font-normal text-base-content/40">({{ blobs|length }})</span>
+      </div>
+      {% if blob_groups %}
+        <div class="flex flex-col gap-3">
+          {% for group in blob_groups %}
+            <div class="rounded-box border border-base-300 overflow-hidden">
+              <div class="bg-base-200/60 px-2 py-1 flex items-center justify-between">
+                <span class="badge {{ group.badge }} badge-xs">{{ group.label }}</span>
+                <span class="text-xs text-base-content/40">{{ group.blobs|length }}</span>
+              </div>
+              <ul class="divide-y divide-base-200">
+                {% for blob in group.blobs %}
+                  <li class="px-2 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-base-200/50 transition-colors"
+                      hx-get="{% url 'blob_detail' blob.pk %}"
+                      hx-target="#drawer"
+                      hx-swap="innerHTML">
+                    <div class="min-w-0 flex-1">
+                      {% for link in blob.links.all %}
+                        {% if forloop.first %}
+                          <div class="font-mono text-xs truncate leading-tight">
+                            <span class="font-semibold">{{ link.name }}</span>
+                            {% if blob.links.all|length > 1 %}
+                              <span class="text-base-content/40">+{{ blob.links.all|length|add:"-1" }} more</span>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                      {% empty %}
+                        <span class="text-xs text-base-content/40">(no links)</span>
+                      {% endfor %}
+                    </div>
+                    <div class="text-xs font-mono shrink-0">{{ blob.size|binsize }}</div>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-xs text-base-content/40">This torrent has no blobs.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>

@@ -200,6 +200,41 @@ def links_by_tree(links: Iterable[Link]) -> list[LinkGroup]:
     return groups
 
 
+class BlobGroup(TypedDict):
+    status: str
+    label: str
+    badge: str
+    blobs: list[Blob]
+
+
+def blobs_by_status(blobs: Iterable[Blob]) -> list[BlobGroup]:
+    """
+    Group a torrent's blobs by their status, in STATUS_VOCAB order.
+
+    Each group holds the blobs for one status, in the order given. Statuses with
+    no blobs are omitted. Any blob with an unrecognized status is dropped from
+    the grouping.
+
+    :param blobs: the torrent's blobs (typically already ordered and prefetched)
+    """
+    by_status: dict[str, list[Blob]] = defaultdict(list)
+    for blob in blobs:
+        by_status[blob.status].append(blob)
+
+    groups: list[BlobGroup] = []
+    for status in STATUS_VOCAB:
+        if status_blobs := by_status.get(status):
+            groups.append(
+                {
+                    "status": status,
+                    "label": status_label(status),
+                    "badge": status_badge_class(status),
+                    "blobs": status_blobs,
+                }
+            )
+    return groups
+
+
 def status_label(status: str) -> str:
     """Return the display label for a Blob.Status value, or the raw value when unknown"""
     try:

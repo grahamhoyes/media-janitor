@@ -42,14 +42,17 @@
     </thead>
     {% for torrent in page_obj %}
       <tbody x-data="{ open: false }">
-        {# Torrent row. TODO: hx-get /torrent/<pk>/ into #drawer #}
-        <tr class="hover:bg-base-200/50 transition-colors">
+        {# Torrent row #}
+        <tr class="hover:bg-base-200/50 transition-colors cursor-pointer"
+            hx-get="{% url 'torrent_detail' torrent.pk %}"
+            hx-target="#drawer"
+            hx-swap="innerHTML">
           {# Expand control: toggles visibility, fetches the blob rows on first open only #}
           <td>
             <button type="button"
                     class="btn btn-ghost btn-xs btn-square"
                     aria-label="Expand torrent files"
-                    @click="open = !open"
+                    @click.stop="open = !open"
                     hx-get="{% url 'torrent_blobs' torrent.pk %}"
                     hx-trigger="click once"
                     hx-target="#torrent-files-{{ torrent.pk }}"

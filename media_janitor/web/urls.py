@@ -8,6 +8,7 @@ urlpatterns = [
     path("", views.dashboard, name="dashboard"),
     path("files/", views.FilesListView.as_view(), name="files"),
     path("torrents/", views.TorrentListView.as_view(), name="torrents"),
+    path("torrent/<int:pk>/", views.torrent_detail, name="torrent_detail"),
     path("torrents/<int:pk>/blobs/", views.torrent_blobs, name="torrent_blobs"),
     path("blob/<int:pk>/", views.blob_detail, name="blob_detail"),
     path("scan/", views.run_scan, name="run_scan"),

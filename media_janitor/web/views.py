@@ -296,8 +296,7 @@ def blob_detail(request: HttpRequest, pk: int) -> HttpResponse:
     """
     Render the blob detail drawer fragment for one blob of the current scan
 
-    Scoped to the current scan so a stale or unknown pk 404s the same way the files list
-    only ever shows the current scan.
+    Scoped to the current scan so a stale or unknown pk 404s.
 
     :param request: the incoming request
     :param pk: primary key of the blob to show
@@ -318,6 +317,41 @@ def blob_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "torrents": sorted(blob.torrents.all(), key=lambda torrent: torrent.hash),
             "flags": display.active_flags(blob),
             "links_outside": blob.nlink - blob.links_found,
+            "config": Config.get(),
+        },
+    )
+
+
+@login_required
+def torrent_detail(request: HttpRequest, pk: int) -> HttpResponse:
+    """
+    Render the torrent detail drawer fragment for one torrent of the current scan
+
+    Scoped to the current scan so a stale or unknown pk 404s.
+
+    :param request: the incoming request
+    :param pk: primary key of the torrent to show
+    """
+    scan = Scan.current()
+    if scan is None:
+        raise Http404("No completed scan")
+
+    torrent = get_object_or_404(scan.torrents, pk=pk)
+    # distinct: a torrent can reference one blob through several file entries, same
+    # caveat as torrent_blobs()/TorrentListView.blob_count
+    blobs = (
+        torrent.blobs.distinct()
+        .order_by("-size", "pk")
+        .prefetch_related(Prefetch("links", queryset=Link.objects.order_by("path")))
+    )
+
+    return render(
+        request,
+        "media_janitor/fragments/torrent_detail.html",
+        {
+            "torrent": torrent,
+            "blobs": blobs,
+            "blob_groups": display.blobs_by_status(blobs),
             "config": Config.get(),
         },
     )

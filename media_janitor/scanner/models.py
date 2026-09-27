@@ -104,6 +104,11 @@ class Scan(models.Model):
     }
     """
 
+    free_bytes = models.BigIntegerField(
+        default=0,
+        help_text="Bytes available on the share filesystem at scan time",
+    )
+
     class Meta:
         ordering = ["-as_of"]
 

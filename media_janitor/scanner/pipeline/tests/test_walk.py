@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -154,3 +155,29 @@ def test_walk_stat_error_counted(tmp_path, monkeypatch):
     result = walk(share)
     assert result.stat_errors == 1
     assert "media/movies/Bar/bar.mkv" not in _by_rel(result)
+
+
+def test_walk_reports_free_bytes(tmp_path, monkeypatch):
+    # Stubbed so the result is deterministic. Free blocks are f_bavail (available to
+    # unprivileged users), not f_bfree
+    def fake_statvfs(path):
+        return SimpleNamespace(f_bavail=10, f_bfree=20, f_frsize=4096)
+
+    monkeypatch.setattr("scanner.pipeline.walk.os.statvfs", fake_statvfs)
+    share = _build_tree(tmp_path)
+
+    result = walk(share)
+
+    assert result.free_bytes == 10 * 4096
+
+
+def test_walk_free_bytes_failure_propagates(tmp_path, monkeypatch):
+    # Failing to read free space after a successful walk means the mount is not intact
+    def fail_statvfs(path):
+        raise OSError("stale file handle")
+
+    monkeypatch.setattr("scanner.pipeline.walk.os.statvfs", fail_statvfs)
+    share = _build_tree(tmp_path)
+
+    with pytest.raises(OSError, match="stale file handle"):
+        walk(share)

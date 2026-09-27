@@ -115,13 +115,14 @@ def headline_band(scan: Scan) -> dict[str, object]:
     Render the headline band for a scan
 
     Shows the scan's reclaimable byte total and a proportional bar of all space by
-    status. Callers must only invoke this when a scan exists.
+    status. The user can toggle free space into the bar as a trailing segment. Callers
+    must only invoke this when a scan exists.
 
     :param scan: the current scan to summarize
     """
     return {
         "reclaimable_bytes": scan.reclaimable_bytes,
-        "segments": display.headline_segments(scan),
+        **display.headline(scan),
     }
 
 

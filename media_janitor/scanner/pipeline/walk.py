@@ -21,10 +21,12 @@ class FileRecord:
 
 @dataclass(frozen=True)
 class WalkResult:
-    """Outcome of a walk: the discovered files plus a count of skipped files"""
+    """Outcome of a walk: the discovered files, a count of skipped files, and filesystem stats"""
 
     records: list[FileRecord]
     stat_errors: int
+    free_bytes: int
+    "Bytes available on the share filesystem"
 
 
 def walk(share_root: Path) -> WalkResult:
@@ -39,6 +41,9 @@ def walk(share_root: Path) -> WalkResult:
     directory (os.scandir) are not caught: if share_root itself (or any directory beneath
     it) cannot be opened, the OSError propagates and aborts the walk. An unreadable or
     absent share root means the mount is not intact, so a partial tree is not reported.
+
+    Free space is read after the walk. Like directory errors, failing to read it means the
+    mount is not intact, so the OSError propagates.
     """
     records: list[FileRecord] = []
     stat_errors = 0
@@ -74,4 +79,10 @@ def walk(share_root: Path) -> WalkResult:
                     )
                 )
 
-    return WalkResult(records=records, stat_errors=stat_errors)
+    fs_stat = os.statvfs(share_root)
+    return WalkResult(
+        records=records,
+        stat_errors=stat_errors,
+        # f_bavail rather than f_bfree: the space available to unprivileged users
+        free_bytes=fs_stat.f_bavail * fs_stat.f_frsize,
+    )

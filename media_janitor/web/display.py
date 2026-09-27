@@ -412,13 +412,33 @@ class HeadlineSegment(TypedDict):
     label: str
     bytes: int
     pct: float
+    "Percent of the bytes across all statuses"
+    pct_with_free: float
+    "Percent of the bytes across all statuses plus free space"
     bar_class: str
     dot_class: str
 
 
-def headline_segments(scan: Scan) -> list[HeadlineSegment]:
+class HeadlineFree(TypedDict):
+    bytes: int
+    pct: float
+    "Percent of the bytes across all statuses plus free space"
+
+
+class Headline(TypedDict):
+    segments: list[HeadlineSegment]
+    free: HeadlineFree
+    "Free space on the share filesystem"
+
+
+def _pct(part: int, whole: int) -> float:
+    """Percentage of part in whole to two decimal places, or 0 if whole is 0"""
+    return round(part / whole * 100, 2) if whole else 0.0
+
+
+def headline(scan: Scan) -> Headline:
     """
-    Build the ordered segments for the headline band's proportional bar.
+    Build the segments for the headline band's proportional bar.
 
     For example:
 
@@ -428,27 +448,34 @@ def headline_segments(scan: Scan) -> list[HeadlineSegment]:
 
     Each segment covers one Blob.Status, in vocabulary order (reclaimable,
     linked_externally, seeding_hold, in_library, in_progress), sized by that status's
-    total bytes in the scan. Percentages are whole numbers of the total bytes across all
-    statuses. Zero total yields 0 percent everywhere (no division by zero).
+    total bytes in the scan. pct is relative to the total bytes across all statuses, and
+    pct_with_free additionally includes the scan's free space in the total so the bar can
+    optionally show free space as a trailing segment. Zero totals yield 0 percent
+    everywhere (no division by zero).
 
-    :param scan: the scan whose status_totals drive the segments
+    :param scan: the scan
     """
     status_totals = scan.status_totals or {}
     totals = {key: (status_totals.get(key) or {}).get("bytes", 0) for key in STATUS_VOCAB}
-    grand_total = sum(totals.values())
+    used_total = sum(totals.values())
+    total_with_free = used_total + scan.free_bytes
 
     segments: list[HeadlineSegment] = []
     for key in STATUS_VOCAB:
         size = totals[key]
-        pct = round(size / grand_total * 100, 2) if grand_total else 0.0
         segments.append(
             {
                 "key": key,
                 "label": status_label(key),
                 "bytes": size,
-                "pct": pct,
+                "pct": _pct(size, used_total),
+                "pct_with_free": _pct(size, total_with_free),
                 "bar_class": STATUS_BAR_CLASS[key],
                 "dot_class": STATUS_BAR_CLASS[key],
             }
         )
-    return segments
+
+    return {
+        "segments": segments,
+        "free": {"bytes": scan.free_bytes, "pct": _pct(scan.free_bytes, total_with_free)},
+    }

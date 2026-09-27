@@ -116,6 +116,8 @@ def test_publishes_complete_snapshot_with_reclaimable_totals(tmp_path):
     assert scan.qbittorrent_version == "5.2.0"
     assert client.calls == 1
 
+    assert scan.free_bytes > 0
+
     # foo.mkv is hard-linked into the library and torrent-tracked: in_library, kept.
     # orphan.mkv is loose and untracked: reclaimable.
     assert scan.reclaimable_bytes == len(LOOSE_CONTENT)

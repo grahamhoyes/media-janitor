@@ -2,16 +2,16 @@ import pytest
 from django.urls import reverse
 
 from scanner.models import Scan
-from web.display import headline_segments
+from web.display import headline
 from web.tests.factories import make_complete_scan, make_scan
 
-# -- headline_segments ----------------------------------------------------------
+# -- headline ----------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_headline_segments_ordering_labels_and_pcts():
+def test_headline_ordering_labels_and_pcts():
     scan = make_complete_scan()
-    segments = headline_segments(scan)
+    segments = headline(scan)["segments"]
 
     keys = [seg["key"] for seg in segments]
     assert keys == [
@@ -44,8 +44,8 @@ def test_headline_segments_ordering_labels_and_pcts():
     assert by_key["seeding_hold"]["dot_class"] == "bg-warning"
 
 
-def test_headline_segments_zero_total_no_division_error():
-    # Constructed in memory (no DB) since headline_segments only reads status_totals
+def test_headline_zero_total_no_division_error():
+    # Constructed in memory (no DB) since headline only reads scan fields
     scan = Scan(
         status_totals={
             "reclaimable": {"count": 0, "bytes": 0},
@@ -55,7 +55,7 @@ def test_headline_segments_zero_total_no_division_error():
             "in_progress": {"count": 0, "bytes": 0},
         }
     )
-    segments = headline_segments(scan)
+    segments = headline(scan)["segments"]
     assert [seg["key"] for seg in segments] == [
         "reclaimable",
         "in_library",
@@ -67,12 +67,34 @@ def test_headline_segments_zero_total_no_division_error():
     assert all(seg["bytes"] == 0 for seg in segments)
 
 
-def test_headline_segments_empty_status_totals():
+def test_headline_empty_status_totals():
     scan = Scan(status_totals={})
-    segments = headline_segments(scan)
+    segments = headline(scan)["segments"]
     assert len(segments) == 5
     assert all(seg["pct"] == 0 for seg in segments)
     assert all(seg["bytes"] == 0 for seg in segments)
+
+
+def test_headline_with_free_bytes():
+    scan = Scan(
+        status_totals={"reclaimable": {"bytes": 100}, "in_library": {"bytes": 300}},
+        free_bytes=600,
+    )
+    result = headline(scan)
+    by_key = {seg["key"]: seg for seg in result["segments"]}
+
+    assert result["free"] == {"bytes": 600, "pct": 60.0}
+    assert by_key["reclaimable"]["pct"] == 25.0
+    assert by_key["reclaimable"]["pct_with_free"] == 10.0
+    assert by_key["in_library"]["pct"] == 75.0
+    assert by_key["in_library"]["pct_with_free"] == 30.0
+
+
+def test_headline_free_bytes_on_empty_scan():
+    scan = Scan(status_totals={}, free_bytes=500)
+    result = headline(scan)
+    assert result["free"] == {"bytes": 500, "pct": 100.0}
+    assert all(seg["pct_with_free"] == 0 for seg in result["segments"])
 
 
 # -- shell through HTTP ---------------------------------------------------------
@@ -97,6 +119,18 @@ def test_dashboard_renders_navbar_band_and_stamp(logged_in_client):
     # Reclaimable amount (binsize of 6000)
     assert "5.9 KiB" in content
     assert "Last scan" in content
+
+
+@pytest.mark.django_db
+def test_dashboard_band_shows_free_space_toggle(logged_in_client):
+    scan = make_complete_scan()
+    scan.free_bytes = 2 * 1024**4
+    scan.save(update_fields=["free_bytes"])
+
+    response = logged_in_client.get(reverse("dashboard"))
+    content = response.content.decode()
+    assert "aria-pressed" in content
+    assert "2.0 TiB" in content
 
 
 @pytest.mark.django_db

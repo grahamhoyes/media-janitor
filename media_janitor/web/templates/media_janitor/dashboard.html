@@ -16,12 +16,16 @@
           <div class="stat-value text-2xl">{{ totals.total_bytes|binsize }}</div>
         </div>
         <div class="stat">
-          <div class="stat-title">Files</div>
-          <div class="stat-value text-2xl">{{ totals.total_count }}</div>
-        </div>
-        <div class="stat">
           <div class="stat-title">Reclaimable</div>
           <div class="stat-value text-2xl text-success">{{ totals.reclaimable_bytes|binsize }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Free space</div>
+          <div class="stat-value text-2xl">{{ current_scan.free_bytes|binsize }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Files</div>
+          <div class="stat-value text-2xl">{{ totals.total_count }}</div>
         </div>
         <div class="stat">
           <div class="stat-title">Torrents</div>
@@ -33,7 +37,7 @@
         {# Per-status breakdown #}
         <div class="card bg-base-100 shadow-md lg:col-span-2">
           <div class="card-body gap-3">
-            <h2 class="card-title text-base">By status</h2>
+            <h2 class="card-title text-base">By Status</h2>
             {% include "media_janitor/fragments/status_breakdown.html" %}
           </div>
         </div>

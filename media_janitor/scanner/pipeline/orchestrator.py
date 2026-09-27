@@ -21,7 +21,7 @@ from scanner.models import Blob, BlobTorrent, Config, Link, Scan, Torrent
 from scanner.pipeline.build import ScanModel, build_scan_model
 from scanner.pipeline.lock import advisory_lock
 from scanner.pipeline.seeding import SeedingReqs
-from scanner.pipeline.walk import walk
+from scanner.pipeline.walk import WalkResult, walk
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ def run_scan(
                 now=now,
             )
 
-            _commit(scan, result, torrent_snapshot)
+            _commit(scan, result, walk_result, torrent_snapshot)
         except Exception:
             # A download client outage (QBittorrentError) or any other
             # gather/build/commit failure marks the scan failed and leaves the
@@ -117,6 +117,10 @@ def run_scan(
 
         _prune_scans()
         logger.info("scan %s published as complete", scan.pk)
+
+        # Refresh what was committed
+        scan.refresh_from_db()
+
         return scan
 
 
@@ -155,7 +159,9 @@ def _get_torrents(client: DownloadClient | None) -> ClientSnapshot:
     return asyncio.run(client.gather())
 
 
-def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
+def _commit(
+    scan: Scan, result: ScanModel, walk_result: WalkResult, snapshot: ClientSnapshot
+) -> None:
     """
     Atomically insert all snapshot rows and flip the scan to complete
 
@@ -166,6 +172,7 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
 
     :param scan: The running Scan to publish
     :param result: Derived value objects and summary totals
+    :param walk_result: The filesystem walk (for filesystem stats)
     :param snapshot: The download-client snapshot (for the server version)
     """
     with transaction.atomic():
@@ -260,9 +267,10 @@ def _commit(scan: Scan, result: ScanModel, snapshot: ClientSnapshot) -> None:
 
         scan.status_totals = result.status_totals
         scan.qbittorrent_version = snapshot.server_version
+        scan.free_bytes = walk_result.free_bytes
         scan.status = Scan.Status.COMPLETE
         scan.finished_at = timezone.now()
-        scan.save(update_fields=["status_totals", "qbittorrent_version", "status", "finished_at"])
+        scan.save()
 
 
 def _mark_failed(scan: Scan) -> None:

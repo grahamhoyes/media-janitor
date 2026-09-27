@@ -8,15 +8,29 @@
       <span class="text-xs text-base-content/50">reclaimable</span>
     </div>
 
-    {# Proportional bar of all space by status, plus legend #}
-    <div class="flex-1 min-w-0">
+    {% comment %}
+      Proportional bar of all space by status, plus legend. A persisted toggle adds free space to
+      the bar as a trailing segment, rescaling the status segments to their share of used + free.
+    {% endcomment %}
+    <div class="flex-1 min-w-0"
+         x-data="{ showFree: $persist(false).as('mj-show-free') }">
       <div class="flex h-3 w-full gap-px overflow-hidden rounded">
         {% for seg in segments %}
           <a class="{{ seg.bar_class }}"
-             style="width: {{ seg.pct }}%"
-             title="{{ seg.label }}: {{ seg.bytes|binsize }} ({{ seg.pct }}%)"
-             href="{% url 'files' %}?status={{ seg.key }}"></a>
+            {# Default title and style when not showing free bytes (prevents loading flash) #}
+            title="{{ seg.label }}: {{ seg.bytes|binsize }} ({{ seg.pct }}%)"
+            style="width: {{ seg.pct }}%"
+            {# djlint:off #}
+            :style="{ width: (showFree ? {{ seg.pct_with_free }} : {{ seg.pct }}) + '%' }"
+            :title="'{{ seg.label }}: {{ seg.bytes|binsize }} (' + (showFree ? {{ seg.pct_with_free }} : {{ seg.pct }}) + '%)'"
+            {# djlint:on #}
+          href="{% url 'files' %}?status={{ seg.key }}"></a>
         {% endfor %}
+        <div class="bg-base-300"
+             style="width: {{ free.pct }}%"
+             title="Free: {{ free.bytes|binsize }} ({{ free.pct }}%)"
+             x-show="showFree"
+             x-cloak></div>
       </div>
 
       <div class="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
@@ -28,6 +42,18 @@
             <span class="font-mono text-base-content/40">{{ seg.bytes|binsize }}</span>
           </a>
         {% endfor %}
+        {# Legend entry and toggle: solid swatch when shown, outlined when hidden #}
+        <button type="button"
+                class="flex items-baseline gap-1 text-xs text-base-content/60 cursor-pointer"
+                title="Toggle free space on the share filesystem in the bar"
+                :class="!showFree && 'opacity-50'"
+                :aria-pressed="showFree"
+                @click="showFree = !showFree">
+          <span class="inline-block h-2 w-2 rounded-sm border border-base-content/30"
+                :class="showFree && 'bg-base-300'"></span>
+          <span>Free</span>
+          <span class="font-mono text-base-content/40">{{ free.bytes|binsize }}</span>
+        </button>
       </div>
     </div>
 

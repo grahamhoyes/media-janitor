@@ -5,6 +5,8 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# History cache misses fetch the full page (views return fragments for HX-Request) #}
+    <meta name="htmx-config" content='{"historyRestoreAsHxRequest": false}'>
     <title>
       {% block title %}
         {% block page_title %}
@@ -132,25 +134,44 @@
       </main>
 
       {% comment %}
-        Detail drawer. Fragments are swapped into #drawer via hx-target. The after-swap listener
-        checks the toggle to show the panel once new content is swapped in. Can be closed by clicking
-        on the backdrop, Escape, or with a <label for="main-drawer"> in the drawer body.
+        Detail drawer.
+
+        Drawer fragments are swapped into #drawer via hx-target. The server pushes the drawer query
+        param (such as ?drawer=blob-123) to the URL with `HX-Push-Url`. A full page load of that URL
+        includes `drawer_html`, and renders the drawer already open.
+
+        Can be closed by clicking on the backdrop, Escape, or with a <label for="main-drawer">
+        in the drawer body. Closing removes the drawer param from the URL.
       {% endcomment %}
+      {# djlint:off #}
       <div class="drawer drawer-end"
-           x-data
-           @htmx:after-swap.window="if ($event.detail.target?.id === 'drawer') $refs.drawerToggle.checked = true"
-           @keydown.escape.window="$refs.drawerToggle.checked = false">
+           x-data="{
+             open() { $refs.toggle.checked = true },
+             close() {
+               $refs.toggle.checked = false;
+               const url = new URL(location);
+               url.searchParams.delete('drawer');
+               history.replaceState(history.state, '', url);
+             },
+           }"
+           @htmx:after-swap.window="$event.detail.target?.id === 'drawer' && open()"
+           @keydown.escape.window="$refs.toggle.checked && close()"
+           @htmx:before-history-save.window="$refs.toggle.toggleAttribute('checked', $refs.toggle.checked)">
         <input id="main-drawer"
-               x-ref="drawerToggle"
+               x-ref="toggle"
                type="checkbox"
-               class="drawer-toggle">
+               class="drawer-toggle"
+               {% if drawer_html %}checked{% endif %}
+               @change="$el.checked || close()">
         <div class="drawer-side z-50">
           <label for="main-drawer" aria-label="Close drawer" class="drawer-overlay"></label>
           <aside class="min-h-full w-full max-w-xl bg-base-100 border-l border-base-300 shadow-xl">
-            <div id="drawer">{# Drawer content gets swapped in with HTMX #}</div>
+            {# drawer_html for directly rendering a page with the drawer opened from a view #}
+            <div id="drawer">{{ drawer_html|default:"" }}</div>
           </aside>
         </div>
       </div>
+      {# djlint:on #}
 
     </body>
   {% endblock body %}

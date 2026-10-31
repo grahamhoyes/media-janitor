@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -20,28 +20,24 @@ from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.generic import View
-from django_htmx.middleware import HtmxDetails
 
 from scanner.models import Config, Link, Scan
 from scanner.tasks import is_scan_in_progress
 from scanner.tasks import scan as scan_task
 from web import display
+from web.drawers import DetailDrawerView
 from web.filters import BlobFilters, FilterSet, TorrentFilters
-
-
-class HtmxHttpRequest(HttpRequest):
-    """An HttpRequest with the htmx details attached by django-htmx middleware"""
-
-    htmx: HtmxDetails
+from web.http import HtmxHttpRequest
 
 
 class SortedListView(LoginRequiredMixin, View, ABC):
     """
     Generic view for filtered, sorted, and paginated list views
 
-    Renders the full page on a normal request and only the table fragment on an HTMX
-    request, so filter/sort/page controls can swap the table alone.
+    On HTMX requests: Renders only the table
 
+    On regular requests: Renders the full page. If the drawer query parameter is set,
+    also renders the detail drawer (see DetailDrawerView).
 
     Subclasses declare:
         - FILTERSET_CLASS: FilterSet class (filters, search, and sort)
@@ -66,6 +62,8 @@ class SortedListView(LoginRequiredMixin, View, ABC):
 
         :param request: the incoming request
         """
+        drawer = DetailDrawerView.pop_from(request)
+
         scan = Scan.current()
 
         if scan is None:
@@ -98,6 +96,9 @@ class SortedListView(LoginRequiredMixin, View, ABC):
             "matching_count": matching_count,
             "total_count": total_count,
         }
+
+        if drawer and not request.htmx:
+            context["drawer_html"] = drawer.render_html(scan)
 
         return render(request, self.get_template_name(request), context)
 
@@ -291,26 +292,21 @@ def dashboard(request):
     )
 
 
-@login_required
-def blob_detail(request: HttpRequest, pk: int) -> HttpResponse:
-    """
-    Render the blob detail drawer fragment for one blob of the current scan
+class BlobDetailView(DetailDrawerView):
+    """Blob detail drawer for one blob of the current scan"""
 
-    Scoped to the current scan so a stale or unknown pk 404s.
+    KIND = "blob"
+    TEMPLATE = "media_janitor/fragments/blob_detail.html"
+    LIST_URL_NAME = "files"
 
-    :param request: the incoming request
-    :param pk: primary key of the blob to show
-    """
-    scan = Scan.current()
-    if scan is None:
-        raise Http404("No completed scan")
+    def get_context(self, scan: Scan) -> dict[str, Any]:
+        """
+        Build the blob detail context for the blob being shown
 
-    blob = get_object_or_404(scan.blobs.prefetch_related("links", "torrents"), pk=pk)
-
-    return render(
-        request,
-        "media_janitor/fragments/blob_detail.html",
-        {
+        :param scan: the scan the blob must belong to
+        """
+        blob = get_object_or_404(scan.blobs.prefetch_related("links", "torrents"), pk=self.pk)
+        return {
             "blob": blob,
             "link_groups": display.links_by_tree(blob.links.all()),
             # Sorted for stable output. The prefetch cache means no extra query.
@@ -318,43 +314,36 @@ def blob_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "flags": display.active_flags(blob),
             "links_outside": blob.nlink - blob.links_found,
             "config": Config.get(),
-        },
-    )
+        }
 
 
-@login_required
-def torrent_detail(request: HttpRequest, pk: int) -> HttpResponse:
-    """
-    Render the torrent detail drawer fragment for one torrent of the current scan
+class TorrentDetailView(DetailDrawerView):
+    """Torrent detail drawer for one torrent of the current scan"""
 
-    Scoped to the current scan so a stale or unknown pk 404s.
+    KIND = "torrent"
+    TEMPLATE = "media_janitor/fragments/torrent_detail.html"
+    LIST_URL_NAME = "torrents"
 
-    :param request: the incoming request
-    :param pk: primary key of the torrent to show
-    """
-    scan = Scan.current()
-    if scan is None:
-        raise Http404("No completed scan")
+    def get_context(self, scan: Scan) -> dict[str, Any]:
+        """
+        Build the torrent detail context for the torrent being shown
 
-    torrent = get_object_or_404(scan.torrents, pk=pk)
-    # distinct: a torrent can reference one blob through several file entries, same
-    # caveat as torrent_blobs()/TorrentListView.blob_count
-    blobs = (
-        torrent.blobs.distinct()
-        .order_by("-size", "pk")
-        .prefetch_related(Prefetch("links", queryset=Link.objects.order_by("path")))
-    )
-
-    return render(
-        request,
-        "media_janitor/fragments/torrent_detail.html",
-        {
+        :param scan: the scan the torrent must belong to
+        """
+        torrent = get_object_or_404(scan.torrents, pk=self.pk)
+        # distinct: a torrent can reference one blob through several file entries, same
+        # caveat as torrent_blobs()/TorrentListView.blob_count
+        blobs = (
+            torrent.blobs.distinct()
+            .order_by("-size", "pk")
+            .prefetch_related(Prefetch("links", queryset=Link.objects.order_by("path")))
+        )
+        return {
             "torrent": torrent,
             "blobs": blobs,
             "blob_groups": display.blobs_by_status(blobs),
             "config": Config.get(),
-        },
-    )
+        }
 
 
 @login_required

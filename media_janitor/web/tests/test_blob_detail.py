@@ -12,6 +12,8 @@ from web.tests.factories import make_blob, make_link, make_scan, make_torrent
 def logged_in_client(client, django_user_model):
     user = django_user_model.objects.create_user(username="tester", password="pw")
     client.force_login(user)
+    # The drawer is an HTMX fragment. Direct visits redirect (see test_drawer_navigation.py).
+    client.defaults["HTTP_HX_REQUEST"] = "true"
     return client
 
 

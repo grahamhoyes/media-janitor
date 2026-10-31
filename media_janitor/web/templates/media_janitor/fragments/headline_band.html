@@ -16,15 +16,20 @@
          x-data="{ showFree: $persist(false).as('mj-show-free') }">
       <div class="flex h-3 w-full gap-px overflow-hidden rounded">
         {% for seg in segments %}
-          <a class="{{ seg.bar_class }}"
-            {# Default title and style when not showing free bytes (prevents loading flash) #}
-            title="{{ seg.label }}: {{ seg.bytes|binsize }} ({{ seg.pct }}%)"
-            style="width: {{ seg.pct }}%"
-            {# djlint:off #}
-            :style="{ width: (showFree ? {{ seg.pct_with_free }} : {{ seg.pct }}) + '%' }"
-            :title="'{{ seg.label }}: {{ seg.bytes|binsize }} (' + (showFree ? {{ seg.pct_with_free }} : {{ seg.pct }}) + '%)'"
-            {# djlint:on #}
-          href="{% url 'files' %}?status={{ seg.key }}"></a>
+          {# Don't render zero-width segments, since they would still get a gap from `gap-px` #}
+          {% if seg.pct %}
+            <a class="{{ seg.bar_class }}"
+              {# Default title and style when not showing free bytes (prevents loading flash) #}
+              title="{{ seg.label }}: {{ seg.bytes|binsize }} ({{ seg.pct }}%)"
+              style="width: {{ seg.pct }}%"
+              {# djlint:off #}
+              :style="{ width: (showFree ? {{ seg.pct_with_free }} : {{ seg.pct }}) + '%' }"
+              :title="'{{ seg.label }}: {{ seg.bytes|binsize }} (' + (showFree ? {{ seg.pct_with_free }} : {{ seg.pct }}) + '%)'"
+              {# pct_with_free might get rounded to zero, so also hide in that case to prevent showing the gap #}
+              :class="{ hidden: (showFree ? {{ seg.pct_with_free }} : {{ seg.pct }}) == 0 }"
+              {# djlint:on #}
+            href="{% url 'files' %}?status={{ seg.key }}"></a>
+          {% endif %}
         {% endfor %}
         <div class="bg-base-300"
              style="width: {{ free.pct }}%"
